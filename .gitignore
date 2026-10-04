@@ -1,0 +1,30 @@
+# ── Node / Vite ──────────────────────────────────────
+node_modules/
+dist/
+.vite/
+
+# ── Environment / Secrets (NEVER commit) ─────────────
+.env
+.env.*
+!.env.example
+
+# ── Python ────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.venv/
+venv/
+env/
+
+# ── OS / Editor ───────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/settings.json
+*.log
+
+# ── Build artefacts ───────────────────────────────────
+backend/__pycache__/
+backend/*.log
