@@ -538,7 +538,7 @@ export const INITIAL_ROUTES = [
 
 // Simulated ambulance GPS (PROTOTYPE — GPS data is generated locally, not from a real device)
 export const INITIAL_AMBULANCE = {
-  active: true,
+  active: false,
   id: 'AMB-102',
   callsign: 'MEDIC-102',
   unit: 'Chennai Central Emergency Station — Unit 44',

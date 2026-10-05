@@ -35,21 +35,24 @@ const TrafficContext = createContext(null);
 function normalizeAmbulance(raw) {
   if (!raw || typeof raw !== 'object') return null;
   return {
+    ...raw,
     active:               raw.active               ?? false,
-    id:                   raw.id                   ?? 'AMB-102',
-    callsign:             raw.callsign             ?? 'MEDIC-102',
-    unit:                 raw.unit                 ?? '',
-    patientStatus:        raw.patientStatus        ?? '',
-    origin:               raw.origin               ?? '',
-    destination:          raw.destination          ?? '',
+    id:                   raw.id                   || raw.ambulanceId || 'AMB-102',
+    callsign:             raw.callsign             || (raw.id ? `MEDIC-${raw.id}` : 'MEDIC-102'),
+    unit:                 raw.unit                 || '',
+    patientStatus:        raw.patientStatus        || '',
+    origin:               raw.origin               || '',
+    destination:          raw.destination          || raw.destinationName || '',
+    latitude:             raw.latitude ?? raw.lat  ?? 13.0067,
+    longitude:            raw.longitude ?? raw.lng ?? 80.2020,
     speed:                raw.speed                ?? 0,
-    eta:                  raw.eta                  ?? '--:--',
-    distRemaining:        raw.distRemaining        ?? '',
+    eta:                  raw.eta                  || '--:--',
+    distRemaining:        raw.distRemaining        || '',
     corridorApproved:     raw.corridorApproved     ?? false,
     currentJunctionIndex: raw.currentJunctionIndex ?? 0,
-    routeJunctions:       raw.routeJunctions       ?? [],
-    junctionStatus:       raw.junctionStatus       ?? {},
-    dataSource:           raw.dataSource           ?? 'LIVE',
+    routeJunctions:       raw.routeJunctions       || [],
+    junctionStatus:       raw.junctionStatus       || {},
+    dataSource:           raw.source               || raw.dataSource || 'LIVE',
   };
 }
 

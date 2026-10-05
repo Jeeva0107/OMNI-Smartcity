@@ -1,231 +1,540 @@
-Fix the Junction Control LOW AI CONFIDENCE alert behavior.
+FIX THE LIVE AMBULANCE ↔ CONTROL ROOM INTEGRATION — ACTUALLY EDIT THE CODE
 
-CURRENT PROBLEM:
-The Junction Control page previously had a large red alert banner at the top saying:
+I need you to fix the existing OMNI SmartCity project. Do NOT just explain the solution. Inspect the codebase, identify the broken frontend connection, modify the necessary files, run the app/build/tests, and verify the result.
 
-LOW AI CONFIDENCE ALERT:
-[affected junctions]
-HUMAN REVIEW REQUIRED • CLICK JUNCTION TO INSPECT & OVERRIDE
+IMPORTANT CONTEXT:
 
-That entire section has now disappeared.
+The ambulance app is running on my teammate's device.
 
-I NEED IT BACK, BUT IT MUST BE DYNAMIC.
+The OMNI SmartCity control-room website is running on my laptop.
 
-REQUIRED BEHAVIOR:
+Both communicate through this Render backend:
 
-1. The red LOW AI CONFIDENCE ALERT banner must appear automatically whenever AT LEAST ONE junction has low AI confidence.
+https://omni-smartcity-backend.onrender.com
 
-2. The banner must NOT always be visible.
+The backend is ALREADY WORKING.
 
-3. If there are no low-confidence junctions, the entire red alert banner should be hidden.
+Render logs confirm that the ambulance app is successfully sending:
 
-4. Use the SAME confidence value/scale already used by Junction Control.
+POST /api/ambulances/location
 
-IMPORTANT:
-The confidence values were previously displayed incorrectly as values such as:
+with:
 
-0.985286%
-0.99916%
-0.996925%
+ambulanceId = AMB-204
 
-We have already investigated that the underlying values may be on a 0–1 scale.
+and changing latitude/longitude values.
 
-Do not blindly assume the scale.
-Use the normalized confidence value produced by the existing confidence logic.
+Therefore DO NOT rewrite the backend.
 
-The final logical thresholds must be:
+DO NOT modify the ambulance app.
 
-HIGH:
->= 70%
+DO NOT modify Render configuration.
 
-MEDIUM:
-40%–69%
-
-LOW:
-< 40%
-
-If the internal value is 0–1, equivalent thresholds are:
-
-HIGH >= 0.70
-MEDIUM >= 0.40 and < 0.70
-LOW < 0.40
-
-Do NOT mix 0–1 and 0–100 scales.
+The problem is specifically the CONTROL ROOM FRONTEND.
 
 ==================================================
-LOW CONFIDENCE BANNER
+CURRENT PROBLEM
 ==================================================
 
-Restore a red warning banner above the Junction Analysis section.
+When my teammate presses START in the Ambulance App:
+
+AMB-204 is successfully created and its GPS is sent to the backend.
+
+BUT the OMNI SmartCity Emergency Corridors page still shows the old simulated ambulance:
+
+AMB-102
+
+with simulated GPS.
+
+That is WRONG.
+
+The Emergency Corridors page must display the REAL ACTIVE AMBULANCE coming from the backend.
+
+==================================================
+DESIRED FINAL BEHAVIOR
+==================================================
+
+When teammate presses START:
+
+AMBULANCE APP
+      ↓
+Render Backend
+      ↓
+Central StateManager / live state
+      ↓
+Existing WebSocket/live-state mechanism
+      ↓
+OMNI SmartCity Control Room
+      ↓
+Emergency Corridors
+
+The control room should automatically show:
+
+AMB-204
+LIVE BACKEND GPS
+Current location
+Destination
+Route
+ETA
+Distance remaining
+Current junction
+Next junction
+Emergency corridor status
+
+NO PAGE REFRESH.
+
+When the ambulance moves in the teammate's app:
+
+→ backend receives new GPS
+→ central state updates
+→ control room receives update
+→ ambulance marker moves automatically.
+
+==================================================
+FIRST: INSPECT THE EXISTING ARCHITECTURE
+==================================================
+
+Before changing anything, inspect:
+
+- src/
+- TrafficContext
+- live WebSocket handling
+- Emergency Corridors page/component
+- ambulance state handling
+- existing INITIAL_* data
+- existing ambulance objects
+- map components
+- route components
+- junction/signal state components
+
+Trace the actual data flow:
+
+WebSocket/backend event
+→ centralized live state
+→ ambulance state
+→ Emergency Corridors
+→ map marker
+→ UI
+
+DO NOT create a second architecture.
+
+Reuse the existing live-state/WebSocket architecture already implemented in this project.
+
+==================================================
+SEARCH FOR STALE SIMULATION
+==================================================
+
+Search the entire frontend for:
+
+AMB-102
+INITIAL_AMBULANCE
+Simulated Driver GPS
+simulated ambulance
+demo ambulance
+13.0067
+80.2020
+hardcoded ambulance
+hardcoded GPS
+hardcoded ambulance route
+
+Identify every place where the Emergency Corridors page is getting stale ambulance information.
+
+REMOVE the stale data from LIVE MODE.
+
+Do NOT simply replace:
+
+AMB-102 → AMB-204
+
+That is NOT the solution.
+
+The ambulance ID must come dynamically from backend state.
+
+If tomorrow the ambulance ID is AMB-305, the control room must automatically show AMB-305.
+
+==================================================
+LIVE AMBULANCE STATE
+==================================================
+
+Use the actual active ambulance object from the existing centralized live state.
+
+If the existing backend/live-state object exposes fields such as:
+
+ambulance.id
+ambulance.latitude
+ambulance.longitude
+ambulance.routeJunctions
+ambulance.corridorApproved
+ambulance.active
+
+use those actual fields.
+
+BUT DO NOT ASSUME THESE ARE THE EXACT PROPERTY NAMES.
+
+Inspect the backend response/state and existing frontend types first.
+
+Use the REAL property names already present in this project.
+
+==================================================
+EMERGENCY CORRIDORS PAGE
+==================================================
+
+When an active ambulance exists:
+
+Display:
+
+AMBULANCE ID
+{live ambulance ID}
+
+GPS
+{live latitude}, {live longitude}
+
+DATA SOURCE
+LIVE BACKEND GPS
+
+DESTINATION
+{live destination}
+
+ETA
+{live ETA}
+
+ROUTE
+{live route}
+
+CURRENT JUNCTION
+{live current junction}
+
+NEXT JUNCTION
+{live next junction}
+
+CORRIDOR STATUS
+{live corridor status}
+
+All values must come from live backend state.
+
+==================================================
+MAP
+==================================================
+
+The ambulance marker must use the LIVE backend coordinates.
+
+Do NOT use:
+
+13.0067
+80.2020
+
+unless those values are actually received from the backend.
+
+The marker must use the current live latitude/longitude.
+
+When a new GPS update arrives:
+
+→ marker moves automatically.
+
+No refresh.
+
+The marker label must use:
+
+liveAmbulance.id
+
+NOT:
+
+AMB-102
+
+NOT:
+
+AMB-204 hardcoded.
+
+==================================================
+NO ACTIVE AMBULANCE
+==================================================
+
+If there is no active ambulance in the live backend state:
+
+DO NOT show a fake ambulance.
+
+DO NOT show AMB-102.
+
+DO NOT show simulated GPS.
+
+Show:
+
+NO ACTIVE EMERGENCY TRIP
+
+Only use simulated ambulance data when the user explicitly enters DEMO/SIMULATION MODE.
+
+==================================================
+JUNCTION + SIGNAL CONNECTION
+==================================================
+
+This is extremely important.
+
+The ambulance and junction signals must also be connected.
+
+When the active ambulance approaches an upcoming junction:
+
+the backend/emergency-corridor state should identify that junction.
+
+The Control Room Emergency Corridors page should show the junction's current signal state.
 
 Example:
 
-⚠ LOW AI CONFIDENCE ALERT
+AMB-204
+      ↓
+Approaching J2
+      ↓
+J2 = GREEN
+      ↓
+EMERGENCY PRIORITY ACTIVE
 
-J1  34%
-J5  28%
-J9  19%
+The junction marker/card should update live.
 
-HUMAN REVIEW REQUIRED • CLICK JUNCTION TO INSPECT & OVERRIDE
+If the signal changes:
 
-Only include junctions whose normalized confidence is <40%.
+RED → GREEN
 
-Do NOT list high-confidence junctions in this banner.
+the Control Room must update automatically.
 
-==================================================
-INTERACTION
-==================================================
+Do NOT create a fake local signal state.
 
-Each low-confidence junction shown in the banner must be clickable.
-
-Clicking:
-
-J5 — 28%
-
-must open/select:
-
-J5 — Junction Analysis
-
-The page should show:
-
-LOW CONFIDENCE — HUMAN REVIEW REQUIRED
-
-and provide:
-
-- Override AI Decision
-- Switch to Normal/Fallback Timing
-- Restore AI Control
+Use the existing backend/junction live state.
 
 ==================================================
-JUNCTION STATUS
+AMBULANCE APP + CONTROL ROOM MUST MATCH
 ==================================================
 
-Each junction's confidence badge should also reflect its state:
+Both applications must consume the same backend state.
 
->=70%:
-normal/high-confidence styling
+Architecture:
 
-40–69%:
-warning styling
+              RENDER BACKEND
+             /              \
+            /                \
+           ↓                  ↓
+  AMBULANCE APP        CONTROL ROOM
+                           ↓
+                   Emergency Corridors
 
-<40%:
-critical/red styling
+Do NOT make:
 
-Do not make every junction red.
+Ambulance App → direct browser connection
 
-==================================================
-TOP-LEVEL ALERT
-==================================================
+Do NOT create:
 
-The alert should be derived from the live junction state.
+Website → separate ambulance simulation
 
-Pseudo-logic:
+Do NOT create:
 
-const lowConfidenceJunctions =
-  junctions.filter(j => normalizeConfidence(j.confidence) < 0.40);
+Website → second WebSocket
 
-if (lowConfidenceJunctions.length > 0) {
-    showLowConfidenceBanner = true;
-} else {
-    showLowConfidenceBanner = false;
-}
-
-Use the project's existing confidence normalization helper if one exists.
-Do not create a second competing confidence calculation.
+Use the existing backend as the single source of truth.
 
 ==================================================
-LIVE UPDATES
+REALTIME EVENTS
 ==================================================
 
-The banner must update automatically when real-time telemetry changes.
+Inspect the existing event system and reuse it.
 
-Example:
+Look for existing events such as:
 
-J5 confidence:
-85% → no banner
+ambulance:trip-started
+ambulance:location-updated
+junction:signal-updated
+corridor:status-updated
+ambulance:route-changed
+ambulance:trip-ended
+ambulance:notification
 
-J5 confidence:
-34% → banner appears immediately
+If equivalent event names already exist, USE THOSE instead of creating duplicates.
 
-J5 confidence:
-34% → 72% → banner disappears automatically
+When a location update arrives:
 
-J7:
-80% → 25% → banner appears and J7 is added
+update ambulance state.
 
-Multiple low-confidence junctions must all be listed.
+When a junction signal update arrives:
+
+update junction state.
+
+When corridor state changes:
+
+update corridor state.
+
+When route changes:
+
+update route and ETA.
 
 ==================================================
-IMPORTANT DATA RULE
+AMBULANCE START
 ==================================================
 
-Do not fabricate low-confidence values just to make the banner appear.
+Test this exact workflow:
 
-Use the actual confidence values from the existing live state.
+1. Start the backend.
 
-For testing only, use the existing simulation/developer mechanism if one already exists.
+2. Open the OMNI SmartCity control room.
 
-Do not modify:
-- TomTom
-- ambulance backend
-- Socket.IO
-- Emergency Corridors
-- Route Intelligence
-- YOLO
-- backend architecture
+3. Open Emergency Corridors.
 
-Do not redesign the rest of the Junction Control page.
+4. Start the teammate's ambulance app.
 
-Keep the existing dark control-room UI.
+5. Press START.
+
+6. Backend should receive the active trip.
+
+7. Control Room should automatically display the active ambulance.
+
+Expected:
+
+AMB-204
+LIVE BACKEND GPS
+
+8. Move the ambulance.
+
+Expected:
+
+Control Room marker moves.
+
+9. Ambulance approaches the next junction.
+
+Expected:
+
+Control Room shows the upcoming junction.
+
+10. Emergency priority signal becomes active.
+
+Expected:
+
+Control Room shows:
+
+GREEN
+EMERGENCY PRIORITY ACTIVE
+
+11. Ambulance passes the junction.
+
+Expected:
+
+junction leaves emergency priority and returns to normal traffic control state according to the existing system logic.
+
+12. End the trip.
+
+Expected:
+
+Control Room shows:
+
+NO ACTIVE EMERGENCY TRIP
+
+==================================================
+CRITICAL RULES
+==================================================
+
+DO NOT:
+
+- rewrite backend
+- rewrite ambulance app
+- create another WebSocket
+- create another polling system
+- create another state manager
+- hardcode AMB-204
+- hardcode AMB-102
+- hardcode ambulance coordinates
+- use simulated GPS in LIVE MODE
+- break TomTom integration
+- break YOLO integration
+- break Junction Control
+- break Route Intelligence
+- break Activity & Events
+- break System Status
+- change the existing dark UI unnecessarily
+
+PRESERVE all existing functionality.
+
+==================================================
+IF THE WEBSOCKET IS CURRENTLY FAILING
+==================================================
+
+Do NOT immediately create another connection.
+
+Inspect the existing live connection.
+
+Verify:
+
+- correct Render backend URL
+- correct Socket.IO/WebSocket endpoint
+- connection status
+- incoming live-state messages
+- parsing of the messages
+- state update
+- Emergency Corridors subscription/consumption
+
+Fix the existing connection if necessary.
+
+The backend is already receiving ambulance REST updates successfully, so don't break the working REST integration.
+
+==================================================
+IMPORTANT DATA HONESTY
+==================================================
+
+LIVE MODE:
+
+LIVE BACKEND GPS
+
+DEMO MODE:
+
+SIMULATION
+
+Never display:
+
+LIVE
+
+when the data is actually simulated.
 
 ==================================================
 FINAL VERIFICATION
 ==================================================
 
-Test these cases:
+After editing:
 
-CASE 1:
-All junctions >=70%
+1. Run the frontend.
+2. Check for compile/runtime errors.
+3. Verify Emergency Corridors loads.
+4. Verify the existing pages still work.
+5. Verify live-state connection.
+6. Verify active ambulance rendering.
+7. Verify live GPS movement.
+8. Verify junction signal updates.
+9. Verify corridor status updates.
+10. Verify trip end clears the ambulance.
 
-Expected:
-No red LOW AI CONFIDENCE banner.
+DO NOT STOP AT "I FOUND THE ROOT CAUSE".
 
-CASE 2:
-One junction <40%
+ACTUALLY MODIFY THE FILES AND TEST THE IMPLEMENTATION.
 
-Expected:
-Red banner appears.
-That junction is listed.
-Clicking it opens its Junction Analysis.
+At the end give me a concise report:
 
-CASE 3:
-Three junctions <40%
+FILES CHANGED:
+...
 
-Expected:
-All three appear in the banner.
+ROOT CAUSE:
+...
 
-CASE 4:
-Low-confidence junction recovers above 40%
+LIVE AMBULANCE SOURCE:
+...
 
-Expected:
-It disappears from the low-confidence list.
+GPS SOURCE:
+...
 
-CASE 5:
-Low-confidence junction recovers above 70%
+JUNCTION SIGNAL SOURCE:
+...
 
-Expected:
-It returns to normal/high-confidence styling.
+REALTIME EVENT:
+...
 
-CASE 6:
-Backend/live telemetry updates confidence
+TEST RESULT:
+...
 
-Expected:
-The banner updates without page refresh.
+Confirm:
 
-After implementing, report:
-- files changed
-- confidence normalization used
-- threshold used
-- how the banner is conditionally rendered
-- how clicking a low-confidence junction works
-- test results for all six cases.
+AMB-102 is NOT used in LIVE MODE.
+AMB-204 appears dynamically when the teammate starts the trip.
+GPS updates live.
+Junction signal changes are reflected.
+Emergency corridor state is synchronized.

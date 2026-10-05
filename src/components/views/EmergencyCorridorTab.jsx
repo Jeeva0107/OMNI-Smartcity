@@ -34,9 +34,9 @@ export const EmergencyCorridorTab = () => {
   const routeJunctionsList = ambulance.routeJunctions || ['J1', 'J8', 'J2', 'J7'];
 
   // Determine if ambulance is live active
-  const isLiveActive = ambulance.active && ambulance.id && ambulance.id !== 'AMB-102';
-  const ambulanceId = ambulance.id || 'NO_ACTIVE_AMBULANCE';
-  const dataSource = isLiveActive ? 'LIVE BACKEND' : 'SIMULATED';
+  const isLiveActive = Boolean(ambulance && ambulance.active);
+  const ambulanceId = isLiveActive ? (ambulance.id || 'AMB-ACTIVE') : 'NO_ACTIVE_AMBULANCE';
+  const dataSource = isLiveActive ? (ambulance.source || ambulance.dataSource || 'LIVE BACKEND') : 'SIMULATED';
 
   return (
     <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-[#090B0D]">
