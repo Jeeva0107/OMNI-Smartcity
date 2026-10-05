@@ -6,4 +6,5 @@ python-socketio==5.17.0
 python-dotenv==1.0.1
 ultralytics
 opencv-python
+simple-websocket
 
