@@ -49,7 +49,7 @@ const TomTomBanner = ({ tomtomStatus }) => {
 };
 
 export const OverviewTab = () => {
-  const { junctions, incidents, ambulance, backendOnline, setActiveTab, tomtomStatus, setSelectedJunctionId } = useTraffic();
+  const { junctions, incidents, backendOnline, setActiveTab, tomtomStatus, setSelectedJunctionId } = useTraffic();
 
   const isTomTomLive = tomtomStatus?.status === 'TOMTOM_LIVE';
 
@@ -125,7 +125,7 @@ export const OverviewTab = () => {
 
         {/* LEFT: MAP (Primary situational awareness viewport) */}
         <div className="flex-1 rounded-xl overflow-hidden border border-[#1A2028] bg-[#0C0F13] relative">
-          <GeoMap onSelectJunction={handleSelectMapJunction} showAmbulance={true} />
+          <GeoMap onSelectJunction={handleSelectMapJunction} showAmbulance={false} />
         </div>
 
         {/* RIGHT: COMMAND CENTER CONTROL PANEL */}
@@ -216,32 +216,6 @@ export const OverviewTab = () => {
             ))}
           </div>
 
-          {/* Emergency Corridor Alert if Active */}
-          {ambulance.active && (
-            <div className="p-4 bg-red-950/20">
-              <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-red-400 pulse-dot" />
-                    <span className="text-[10px] font-bold text-red-400">EMERGENCY CORRIDOR</span>
-                  </div>
-                  <SourceBadge source="SIMULATED" label="GPS STREAM" />
-                </div>
-                <div className="text-[10px] text-[#8A939B]">
-                  <div className="font-semibold text-white text-xs">{ambulance.callsign || ambulance.id}</div>
-                  <div>{ambulance.origin} → {ambulance.destination}</div>
-                  <div className="mt-1 font-data text-red-300 font-bold">ETA: {ambulance.eta} · {ambulance.distRemaining} km</div>
-                </div>
-                <button
-                  onClick={() => setActiveTab('emergency_corridor')}
-                  className="w-full py-1 rounded bg-red-500/20 hover:bg-red-500/30 text-red-400 text-[10px] font-bold border border-red-500/40 transition-colors"
-                >
-                  Manage Emergency Corridor →
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* Quick Monitored Junctions Analysis List */}
           <div className="p-4 space-y-2">
             <div className="text-[9px] font-bold text-[#5A636B] uppercase tracking-wider flex items-center justify-between mb-1">
@@ -290,7 +264,7 @@ export const OverviewTab = () => {
             <div className="text-[10px] text-[#737B82] space-y-1 font-mono">
               <p>• <strong className="text-cyan-400">TOMTOM LIVE</strong>: Speed, travel time &amp; incident flow API</p>
               <p>• <strong className="text-emerald-400">YOLO11n</strong>: Video perception (CAM-01 / J1)</p>
-              <p>• <strong className="text-amber-400">SIMULATED</strong>: Baseline telemetry &amp; ambulance GPS</p>
+              <p>• <strong className="text-amber-400">SIMULATED</strong>: Baseline telemetry</p>
             </div>
           </div>
 
