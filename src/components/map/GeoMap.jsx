@@ -23,7 +23,7 @@ export const SourceBadge = ({ source, type, label }) => {
   return <span className="px-1.5 py-0.5 rounded text-[8px] font-mono font-extrabold bg-amber-500/15 text-amber-400 border border-amber-500/30">◎ SIMULATION FALLBACK</span>;
 };
 
-// ── Status colours ────────────────────────────────────────────────────────────
+// ── Status colours ─────────────────────────────────────────────────────────[...]
 const STATUS_COLOR = {
   SMOOTH:   { fill: '#10b981', stroke: '#059669', text: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/25' },
   MODERATE: { fill: '#f59e0b', stroke: '#d97706', text: 'text-amber-400',   bg: 'bg-amber-500/10 border-amber-500/25' },
@@ -267,7 +267,7 @@ function makeJunctionIcon(j, isAmbulanceCurrent) {
 }
 
 // ── Build a Leaflet divIcon for the ambulance ─────────────────────────────────
-function makeAmbulanceIcon() {
+function makeAmbulanceIcon(ambulanceId) {
   return L.divIcon({
     className: '',
     html: `
@@ -284,7 +284,7 @@ function makeAmbulanceIcon() {
           font-size:9px;font-weight:700;font-family:'JetBrains Mono',monospace;
           white-space:nowrap;color:#FFF;background:#EF4444;
           padding:1px 6px;border-radius:3px;pointer-events:none;
-        ">AMB-102</div>
+        ">${ambulanceId || 'AMB-000'}</div>
       </div>
     `,
     iconSize: [32, 32],
@@ -293,9 +293,9 @@ function makeAmbulanceIcon() {
 }
 
 // ── Ambulance marker sub-component (needs useMap for dynamic positioning) ─────
-const AmbulanceMarker = ({ position }) => {
+const AmbulanceMarker = ({ position, ambulanceId }) => {
   if (!position) return null;
-  const icon = useMemo(() => makeAmbulanceIcon(), []);
+  const icon = useMemo(() => makeAmbulanceIcon(ambulanceId), [ambulanceId]);
   return <Marker position={position} icon={icon} />;
 };
 
@@ -452,8 +452,8 @@ export const GeoMap = ({ onSelectJunction, selectedRoute = null, showAmbulance =
           );
         })}
 
-        {/* Ambulance marker */}
-        {ambPosition && <AmbulanceMarker position={ambPosition} />}
+        {/* Ambulance marker — now uses live ambulance ID */}
+        {ambPosition && <AmbulanceMarker position={ambPosition} ambulanceId={ambulance.id || 'AMB-000'} />}
       </MapContainer>
 
       {/* Map source badge */}
