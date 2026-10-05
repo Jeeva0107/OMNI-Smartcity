@@ -6,6 +6,7 @@ Run:  python app.py
 import os
 import time
 import json
+from datetime import datetime, timezone
 from flask import Flask, jsonify
 from flask_cors import CORS
 from flask_sock import Sock
@@ -15,7 +16,7 @@ from services.state_manager import state_manager
 from services.tomtom_traffic import tomtom_service
 from services.socket_service import init_socketio, socketio
 
-# ── Blueprint imports ──────────────────────────────────────────────────────────
+# ── Blueprint imports ────────────────────────────────────────────────────────────
 from routes.junction_routes import junctions_bp
 from routes.traffic_routes import traffic_bp
 from routes.route_routes import routes_bp
@@ -29,7 +30,7 @@ def create_app() -> Flask:
     # ── Start TomTom Traffic Service ────────────────────────────────────────────
     tomtom_service.start_background_sync(Config.TOMTOM_SYNC_INTERVAL)
 
-    # ── CORS ────────────────────────────────────────────────────────────────────
+    # ── CORS ────────────────────────────────────────────────────────────────
     CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=False)
 
     # ── Socket.IO (for Ambulance App) ──────────────────────────────────────────
@@ -88,22 +89,28 @@ def create_app() -> Flask:
     app.register_blueprint(ambulance_bp, url_prefix=prefix)
     app.register_blueprint(events_bp, url_prefix=prefix)
 
+    # ── Root endpoint ──────────────────────────────────────────────────────────
+    @app.get("/")
+    def root():
+        return jsonify({
+            "service": "Omni SmartCity Backend",
+            "status": "ok"
+        }), 200
+
     # ── Central Live State REST Endpoint ────────────────────────────────────────
     @app.get("/api/state")
     def get_live_state():
         """GET /api/state — Returns full centralized live state snapshot."""
         return jsonify(state_manager.get_state())
 
-    # ── Health check ────────────────────────────────────────────────────────────
+    # ── Health check ──────────────────────────────────────────────────────────
     @app.get("/health")
     def health():
         return jsonify({
             "status": "ok",
-            "service": "omni-smartcity-api",
-            "centralState": "ACTIVE",
-            "websocketEndpoint": "/ws/live",
-            "socketIoEndpoint": "/"
-        })
+            "service": "omni-smartcity-backend",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }), 200
 
     # ── 404 / 405 JSON handlers ─────────────────────────────────────────────────
     @app.errorhandler(404)
@@ -123,7 +130,7 @@ def create_app() -> Flask:
 
 if __name__ == "__main__":
     app = create_app()
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 10000))
 
     print("=" * 55)
     print("  OMNI SMARTCITY  Backend API & Central Live State")
@@ -135,10 +142,4 @@ if __name__ == "__main__":
     print(f"  GPS real:     {Config.USE_REAL_GPS}")
     print("=" * 55)
 
-    socketio.run(
-        app,
-        host="0.0.0.0",
-        port=port,
-        debug=False,
-        allow_unsafe_werkzeug=True,
-    )
+    socketio.run(app, host="0.0.0.0", port=port, debug=False)
