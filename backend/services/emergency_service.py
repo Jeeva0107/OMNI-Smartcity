@@ -393,6 +393,7 @@ def start_ambulance_trip(data: dict) -> dict:
     """
     Handles POST /api/ambulances/trips/start from Ambulance Expo App.
     Accepts any payload variation safely (dict, list, str, None).
+    Updates StateManager and broadcasts to /ws/live.
     """
     if not isinstance(data, dict):
         data = {}
@@ -508,7 +509,10 @@ def start_ambulance_trip(data: dict) -> dict:
         "timestamps": {"started": time.strftime("%H:%M:%S")},
     }
 
+    # ─── CRITICAL: Update StateManager (single source of truth) ───────────────
     updated = state_manager.update_ambulance_and_corridor(trip_record, notify=True)
+    
+    logger.info(f"[STATE] Ambulance trip started: {ambulance_id}, tripId={trip_id}, route={norm_route_id}, eta={eta_info['eta']}")
 
     state_manager.push_event(
         category="AMBULANCE_TRIP_STARTED",
@@ -566,6 +570,7 @@ def start_ambulance_trip(data: dict) -> dict:
 def update_ambulance_location(data: dict) -> dict:
     """
     Handles POST /api/ambulances/location from Ambulance Expo App.
+    Updates StateManager and broadcasts to /ws/live.
     """
     amb = state_manager.get_ambulance()
     ambulance_id = data.get("ambulanceId") or amb.get("id", "AMB-102")
@@ -597,7 +602,10 @@ def update_ambulance_location(data: dict) -> dict:
     if next_j:
         updates["nextJunctionId"] = next_j
 
+    # ─── CRITICAL: Update StateManager (single source of truth) ───────────────
     updated = state_manager.update_ambulance_and_corridor(updates, notify=True)
+    
+    logger.info(f"[STATE] Ambulance location updated: {ambulance_id}, lat={lat:.4f}, lng={lng:.4f}, eta={eta_formatted}")
 
     state_manager.push_event(
         category="AMBULANCE_LOCATION_UPDATED",
@@ -627,6 +635,7 @@ def update_ambulance_location(data: dict) -> dict:
 def change_ambulance_route(data: dict) -> dict:
     """
     Handles POST /api/ambulances/route-change from Ambulance Expo App.
+    Updates StateManager and broadcasts to /ws/live.
     """
     amb = state_manager.get_ambulance()
     ambulance_id = data.get("ambulanceId") or amb.get("id", "AMB-102")
@@ -651,6 +660,8 @@ def change_ambulance_route(data: dict) -> dict:
     }
 
     updated = state_manager.update_ambulance_and_corridor(updates, notify=True)
+    
+    logger.info(f"[STATE] Ambulance route changed: {ambulance_id}, new route={new_route_id}, reason={reason}")
 
     state_manager.push_event(
         category="ROAD_BLOCKED",
@@ -692,6 +703,7 @@ def change_ambulance_route(data: dict) -> dict:
 def end_ambulance_trip(ambulance_id: str = "AMB-102", trip_id: str = "TRIP-102") -> dict:
     """
     Handles POST /api/ambulances/trips/end from Ambulance Expo App.
+    Updates StateManager and broadcasts to /ws/live.
     """
     amb = state_manager.get_ambulance()
     ambulance_id = ambulance_id or amb.get("id", "AMB-102")
@@ -709,6 +721,8 @@ def end_ambulance_trip(ambulance_id: str = "AMB-102", trip_id: str = "TRIP-102")
     }
 
     updated = state_manager.update_ambulance_and_corridor(updates, notify=True)
+    
+    logger.info(f"[STATE] Ambulance trip ended: {ambulance_id}, tripId={trip_id}")
 
     state_manager.push_event(
         category="AMBULANCE_TRIP_ENDED",
@@ -760,7 +774,7 @@ def get_ambulance_notifications(ambulance_id: str = "AMB-102") -> list:
 def notify_junction_signal_change(junction_id: str, signal_state: str, message: str = None):
     """
     Called when a junction signal is manually or AI changed.
-    If junction is on active ambulance corridor, emits Socket.IO event.
+    If junction is on active ambulance corridor, emits Socket.IO event and updates StateManager.
     """
     amb = state_manager.get_ambulance()
     if not amb.get("active") and not amb.get("emergencyActive"):
@@ -813,4 +827,3 @@ def _gps_auto_ticker():
 
 _gps_ticker_thread = threading.Thread(target=_gps_auto_ticker, daemon=True)
 _gps_ticker_thread.start()
-
