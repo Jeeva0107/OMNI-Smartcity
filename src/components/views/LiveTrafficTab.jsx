@@ -45,6 +45,7 @@ export const LiveTrafficTab = () => {
         {/* Map */}
         <div className="flex-1 p-4 relative">
           <GeoMap
+            showJunctionMarkers={false}
             onSelectJunction={(id) => {
               const j = junctions.find(item => item.id === id);
               if (j) setSelectedJunction(j);

@@ -125,7 +125,7 @@ export const OverviewTab = () => {
 
         {/* LEFT: MAP (Primary situational awareness viewport) */}
         <div className="flex-1 rounded-xl overflow-hidden border border-[#1A2028] bg-[#0C0F13] relative">
-          <GeoMap onSelectJunction={handleSelectMapJunction} showAmbulance={false} />
+          <GeoMap onSelectJunction={handleSelectMapJunction} showAmbulance={false} showJunctionMarkers={false} />
         </div>
 
         {/* RIGHT: COMMAND CENTER CONTROL PANEL */}

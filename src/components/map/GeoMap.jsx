@@ -300,7 +300,7 @@ const AmbulanceMarker = ({ position, ambulanceId }) => {
 };
 
 // ── Geographic Map using React Leaflet + OpenStreetMap tiles ──────────────────
-export const GeoMap = ({ onSelectJunction, selectedRoute = null, showAmbulance = false }) => {
+export const GeoMap = ({ onSelectJunction, selectedRoute = null, showAmbulance = false, showJunctionMarkers = true }) => {
   const { junctions, ambulance } = useTraffic();
   const [selectedJunction, setSelectedJunction] = useState(null);
 
@@ -437,8 +437,8 @@ export const GeoMap = ({ onSelectJunction, selectedRoute = null, showAmbulance =
           />
         )}
 
-        {/* Junction markers with real Chennai names */}
-        {junctions.map(j => {
+        {/* Junction markers with real Chennai names (rendered only when showJunctionMarkers is true) */}
+        {showJunctionMarkers && junctions.map(j => {
           const lat = toNum(j.lat);
           const lng = toNum(j.lng);
           if (!lat || !lng) return null;
