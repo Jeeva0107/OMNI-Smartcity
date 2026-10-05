@@ -3,6 +3,7 @@ OMNI SMARTCITY — Flask Application Entry Point with Centralized Live State & W
 Run:  python app.py
       or  flask --app app run --port 5000
 """
+import os
 import time
 import json
 from flask import Flask, jsonify
@@ -28,7 +29,7 @@ def create_app() -> Flask:
     # ── Start TomTom Traffic Service ──────────────────────────────────────────
     tomtom_service.start_background_sync(Config.TOMTOM_SYNC_INTERVAL)
 
-    # ── CORS ─────────────────────────────────────────────────────────────────
+    # ── CORS ────────────────────────────────────────────────────────────
     CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=False)
 
     # ── Socket.IO (for Ambulance App) ─────────────────────────────────────────
@@ -122,20 +123,22 @@ def create_app() -> Flask:
 
 if __name__ == "__main__":
     app = create_app()
+    port = int(os.environ.get("PORT", 5000))
+
     print("=" * 55)
     print("  OMNI SMARTCITY  Backend API & Central Live State")
-    print(f"  Running on  http://0.0.0.0:{Config.PORT}")
-    print(f"  WebSocket:   ws://localhost:{Config.PORT}/ws/live")
-    print(f"  Socket.IO:   http://localhost:{Config.PORT}")
+    print(f"  Running on  http://0.0.0.0:{port}")
+    print(f"  WebSocket:   ws://localhost:{port}/ws/live")
+    print(f"  Socket.IO:   http://localhost:{port}")
     print(f"  CORS origins: {Config.CORS_ORIGINS}")
     print(f"  YOLO real:    {Config.USE_REAL_YOLO}")
     print(f"  GPS real:     {Config.USE_REAL_GPS}")
     print("=" * 55)
+
     socketio.run(
         app,
-        host=Config.HOST,
-        port=Config.PORT,
-        debug=Config.DEBUG,
+        host="0.0.0.0",
+        port=port,
+        debug=False,
         allow_unsafe_werkzeug=True,
     )
-
