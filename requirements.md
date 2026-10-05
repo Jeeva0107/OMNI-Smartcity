@@ -1,127 +1,60 @@
-FIX THE LIVE AMBULANCE ↔ CONTROL ROOM INTEGRATION — ACTUALLY EDIT THE CODE
+URGENT FINAL FIX — CONNECT AMBULANCE APP TO CONTROL ROOM
 
-I need you to fix the existing OMNI SmartCity project. Do NOT just explain the solution. Inspect the codebase, identify the broken frontend connection, modify the necessary files, run the app/build/tests, and verify the result.
+Do not redesign anything.
+Do not remove anything from Emergency Corridors.
+Do not modify the ambulance app.
+Do not modify Render.
+Do not modify TomTom.
+Do not modify YOLO.
 
-IMPORTANT CONTEXT:
+I need you to FIX THE EXISTING INTEGRATION NOW.
 
-The ambulance app is running on my teammate's device.
+==================================================
+CURRENT VERIFIED STATE
+==================================================
 
-The OMNI SmartCity control-room website is running on my laptop.
-
-Both communicate through this Render backend:
+The teammate's Ambulance App is already successfully connected to:
 
 https://omni-smartcity-backend.onrender.com
 
-The backend is ALREADY WORKING.
-
-Render logs confirm that the ambulance app is successfully sending:
-
-POST /api/ambulances/location
-
-with:
+The backend is successfully receiving:
 
 ambulanceId = AMB-204
 
-and changing latitude/longitude values.
+and repeated GPS location updates.
 
-Therefore DO NOT rewrite the backend.
+The backend is also successfully accepting Socket.IO connections.
 
-DO NOT modify the ambulance app.
-
-DO NOT modify Render configuration.
-
-The problem is specifically the CONTROL ROOM FRONTEND.
+Therefore the backend and ambulance app are WORKING.
 
 ==================================================
-CURRENT PROBLEM
+THE ACTUAL BUG
 ==================================================
 
-When my teammate presses START in the Ambulance App:
-
-AMB-204 is successfully created and its GPS is sent to the backend.
-
-BUT the OMNI SmartCity Emergency Corridors page still shows the old simulated ambulance:
+The OMNI SmartCity CONTROL ROOM website still displays:
 
 AMB-102
 
-with simulated GPS.
+This is old simulated/stale ambulance data.
 
-That is WRONG.
+The control room must NOT display AMB-102 in LIVE MODE.
 
-The Emergency Corridors page must display the REAL ACTIVE AMBULANCE coming from the backend.
+It must display the REAL ACTIVE ambulance from the backend.
 
-==================================================
-DESIRED FINAL BEHAVIOR
-==================================================
-
-When teammate presses START:
-
-AMBULANCE APP
-      ↓
-Render Backend
-      ↓
-Central StateManager / live state
-      ↓
-Existing WebSocket/live-state mechanism
-      ↓
-OMNI SmartCity Control Room
-      ↓
-Emergency Corridors
-
-The control room should automatically show:
+If the backend active ambulance is:
 
 AMB-204
-LIVE BACKEND GPS
-Current location
-Destination
-Route
-ETA
-Distance remaining
-Current junction
-Next junction
-Emergency corridor status
 
-NO PAGE REFRESH.
+the control room must show:
 
-When the ambulance moves in the teammate's app:
+AMB-204
 
-→ backend receives new GPS
-→ central state updates
-→ control room receives update
-→ ambulance marker moves automatically.
+Do NOT solve this by replacing the string AMB-102 with AMB-204.
+
+The ID must be dynamic.
 
 ==================================================
-FIRST: INSPECT THE EXISTING ARCHITECTURE
-==================================================
-
-Before changing anything, inspect:
-
-- src/
-- TrafficContext
-- live WebSocket handling
-- Emergency Corridors page/component
-- ambulance state handling
-- existing INITIAL_* data
-- existing ambulance objects
-- map components
-- route components
-- junction/signal state components
-
-Trace the actual data flow:
-
-WebSocket/backend event
-→ centralized live state
-→ ambulance state
-→ Emergency Corridors
-→ map marker
-→ UI
-
-DO NOT create a second architecture.
-
-Reuse the existing live-state/WebSocket architecture already implemented in this project.
-
-==================================================
-SEARCH FOR STALE SIMULATION
+STEP 1 — FIND THE STALE SOURCE
 ==================================================
 
 Search the entire frontend for:
@@ -133,408 +66,257 @@ simulated ambulance
 demo ambulance
 13.0067
 80.2020
-hardcoded ambulance
-hardcoded GPS
-hardcoded ambulance route
 
-Identify every place where the Emergency Corridors page is getting stale ambulance information.
+Especially inspect:
 
-REMOVE the stale data from LIVE MODE.
+src/components/views/EmergencyCorridorTab.jsx
+src/components/map/GeoMap.jsx
+TrafficContext
+live state provider
+ambulance state/constants
 
-Do NOT simply replace:
-
-AMB-102 → AMB-204
-
-That is NOT the solution.
-
-The ambulance ID must come dynamically from backend state.
-
-If tomorrow the ambulance ID is AMB-305, the control room must automatically show AMB-305.
+Find EXACTLY where the Emergency Corridors page gets AMB-102.
 
 ==================================================
-LIVE AMBULANCE STATE
+STEP 2 — CONNECT TO EXISTING LIVE STATE
 ==================================================
 
-Use the actual active ambulance object from the existing centralized live state.
+Use the EXISTING centralized live state/WebSocket architecture.
 
-If the existing backend/live-state object exposes fields such as:
+Do NOT create another WebSocket.
+Do NOT create another polling loop.
+Do NOT create another state manager.
 
-ambulance.id
-ambulance.latitude
-ambulance.longitude
-ambulance.routeJunctions
-ambulance.corridorApproved
-ambulance.active
+The data flow must be:
 
-use those actual fields.
+AMBULANCE APP
+      ↓
+Render Backend
+      ↓
+Central StateManager
+      ↓
+Existing realtime/live state
+      ↓
+TrafficContext / existing live provider
+      ↓
+EmergencyCorridorTab
+      ↓
+GeoMap
 
-BUT DO NOT ASSUME THESE ARE THE EXACT PROPERTY NAMES.
-
-Inspect the backend response/state and existing frontend types first.
-
-Use the REAL property names already present in this project.
-
-==================================================
-EMERGENCY CORRIDORS PAGE
-==================================================
-
-When an active ambulance exists:
-
-Display:
-
-AMBULANCE ID
-{live ambulance ID}
-
-GPS
-{live latitude}, {live longitude}
-
-DATA SOURCE
-LIVE BACKEND GPS
-
-DESTINATION
-{live destination}
-
-ETA
-{live ETA}
-
-ROUTE
-{live route}
-
-CURRENT JUNCTION
-{live current junction}
-
-NEXT JUNCTION
-{live next junction}
-
-CORRIDOR STATUS
-{live corridor status}
-
-All values must come from live backend state.
+The EmergencyCorridorTab must consume the same live ambulance state.
 
 ==================================================
-MAP
+STEP 3 — LIVE AMBULANCE
 ==================================================
 
-The ambulance marker must use the LIVE backend coordinates.
+When an active ambulance exists, Emergency Corridors must dynamically display:
 
-Do NOT use:
+- ambulance ID
+- latitude
+- longitude
+- destination
+- route
+- ETA
+- distance
+- current junction
+- next junction
+- corridor status
 
-13.0067
-80.2020
+Use the actual property names from the existing backend/live-state object.
 
-unless those values are actually received from the backend.
-
-The marker must use the current live latitude/longitude.
-
-When a new GPS update arrives:
-
-→ marker moves automatically.
-
-No refresh.
-
-The marker label must use:
-
-liveAmbulance.id
-
-NOT:
-
-AMB-102
-
-NOT:
-
-AMB-204 hardcoded.
+Do not invent a new data structure if one already exists.
 
 ==================================================
-NO ACTIVE AMBULANCE
+STEP 4 — MAP
 ==================================================
 
-If there is no active ambulance in the live backend state:
+The ambulance map marker must use the live backend:
 
-DO NOT show a fake ambulance.
+latitude
+longitude
+ambulance ID
 
-DO NOT show AMB-102.
+When the ambulance moves in the teammate's app:
 
-DO NOT show simulated GPS.
+POST location
+→ backend state changes
+→ existing realtime event
+→ frontend live state changes
+→ map marker moves
 
-Show:
-
-NO ACTIVE EMERGENCY TRIP
-
-Only use simulated ambulance data when the user explicitly enters DEMO/SIMULATION MODE.
+NO PAGE REFRESH.
 
 ==================================================
-JUNCTION + SIGNAL CONNECTION
+STEP 5 — JUNCTION SIGNAL
 ==================================================
 
-This is extremely important.
+This is the second required connection.
 
-The ambulance and junction signals must also be connected.
+When the active ambulance is approaching a junction, the control room must display that junction's emergency state.
 
-When the active ambulance approaches an upcoming junction:
-
-the backend/emergency-corridor state should identify that junction.
-
-The Control Room Emergency Corridors page should show the junction's current signal state.
-
-Example:
+For example:
 
 AMB-204
-      ↓
-Approaching J2
-      ↓
-J2 = GREEN
-      ↓
-EMERGENCY PRIORITY ACTIVE
+NEXT JUNCTION: J2
 
-The junction marker/card should update live.
-
-If the signal changes:
-
-RED → GREEN
-
-the Control Room must update automatically.
-
-Do NOT create a fake local signal state.
-
-Use the existing backend/junction live state.
-
-==================================================
-AMBULANCE APP + CONTROL ROOM MUST MATCH
-==================================================
-
-Both applications must consume the same backend state.
-
-Architecture:
-
-              RENDER BACKEND
-             /              \
-            /                \
-           ↓                  ↓
-  AMBULANCE APP        CONTROL ROOM
-                           ↓
-                   Emergency Corridors
-
-Do NOT make:
-
-Ambulance App → direct browser connection
-
-Do NOT create:
-
-Website → separate ambulance simulation
-
-Do NOT create:
-
-Website → second WebSocket
-
-Use the existing backend as the single source of truth.
-
-==================================================
-REALTIME EVENTS
-==================================================
-
-Inspect the existing event system and reuse it.
-
-Look for existing events such as:
-
-ambulance:trip-started
-ambulance:location-updated
-junction:signal-updated
-corridor:status-updated
-ambulance:route-changed
-ambulance:trip-ended
-ambulance:notification
-
-If equivalent event names already exist, USE THOSE instead of creating duplicates.
-
-When a location update arrives:
-
-update ambulance state.
-
-When a junction signal update arrives:
-
-update junction state.
-
-When corridor state changes:
-
-update corridor state.
-
-When route changes:
-
-update route and ETA.
-
-==================================================
-AMBULANCE START
-==================================================
-
-Test this exact workflow:
-
-1. Start the backend.
-
-2. Open the OMNI SmartCity control room.
-
-3. Open Emergency Corridors.
-
-4. Start the teammate's ambulance app.
-
-5. Press START.
-
-6. Backend should receive the active trip.
-
-7. Control Room should automatically display the active ambulance.
-
-Expected:
-
-AMB-204
-LIVE BACKEND GPS
-
-8. Move the ambulance.
-
-Expected:
-
-Control Room marker moves.
-
-9. Ambulance approaches the next junction.
-
-Expected:
-
-Control Room shows the upcoming junction.
-
-10. Emergency priority signal becomes active.
-
-Expected:
-
-Control Room shows:
-
+J2
 GREEN
 EMERGENCY PRIORITY ACTIVE
 
-11. Ambulance passes the junction.
+If the backend changes J2:
 
-Expected:
+RED → GREEN
 
-junction leaves emergency priority and returns to normal traffic control state according to the existing system logic.
+the control room must update automatically.
 
-12. End the trip.
+Do NOT create a fake frontend signal.
 
-Expected:
+Use the existing backend/junction state and existing realtime events.
 
-Control Room shows:
+The Ambulance App and Control Room must see the SAME junction state.
+
+==================================================
+STEP 6 — NO ACTIVE AMBULANCE
+==================================================
+
+If there is no active ambulance:
+
+show:
+
+NO ACTIVE EMERGENCY TRIP
+
+Do NOT show AMB-102.
+
+Do NOT show fake GPS.
+
+Do NOT show "Simulated Driver GPS".
+
+Simulation data may exist only in explicit DEMO/SIMULATION mode.
+
+==================================================
+STEP 7 — PRESERVE THE UI
+==================================================
+
+IMPORTANT:
+
+The existing Emergency Corridors page must remain a FULL control-room page.
+
+DO NOT reduce it to only:
+
+START CORRIDOR
+
+Keep:
+
+- Emergency Corridor header
+- Active ambulance information
+- Large map
+- Ambulance marker
+- Route
+- ETA
+- Destination
+- Current/next junction
+- Junction signal states
+- Corridor status
+- Operator controls
+- Activity/events
+- Start Corridor functionality
+
+Do not redesign the page.
+
+==================================================
+STEP 8 — DO NOT REWRITE WORKING BACKEND
+==================================================
+
+Do NOT change:
+
+backend ambulance REST endpoints
+Render configuration
+TomTom
+YOLO
+ambulance app
+Socket.IO server architecture
+
+The backend is already receiving AMB-204.
+
+This is primarily a CONTROL ROOM LIVE-STATE INTEGRATION FIX.
+
+==================================================
+STEP 9 — TEST EXACTLY THIS
+==================================================
+
+1. Start backend.
+
+2. Open OMNI SmartCity Control Room.
+
+3. Open Emergency Corridors.
+
+4. Start the teammate's Ambulance App.
+
+5. Press START.
+
+EXPECTED:
+
+Control Room immediately changes from no active trip/demo state to:
+
+AMB-204
+LIVE BACKEND GPS
+
+6. Move the ambulance.
+
+EXPECTED:
+
+The map marker moves automatically.
+
+7. Ambulance approaches next junction.
+
+EXPECTED:
+
+Control Room shows that junction as upcoming.
+
+8. Emergency signal changes.
+
+EXPECTED:
+
+Control Room shows the same signal state.
+
+Example:
+
+J2
+GREEN
+EMERGENCY PRIORITY ACTIVE
+
+9. Ambulance passes junction.
+
+EXPECTED:
+
+J2 leaves emergency priority according to existing backend logic.
+
+10. End trip.
+
+EXPECTED:
 
 NO ACTIVE EMERGENCY TRIP
 
 ==================================================
-CRITICAL RULES
+FINAL REQUIREMENT
 ==================================================
 
-DO NOT:
+ACTUALLY EDIT THE CODE.
 
-- rewrite backend
-- rewrite ambulance app
-- create another WebSocket
-- create another polling system
-- create another state manager
-- hardcode AMB-204
-- hardcode AMB-102
-- hardcode ambulance coordinates
-- use simulated GPS in LIVE MODE
-- break TomTom integration
-- break YOLO integration
-- break Junction Control
-- break Route Intelligence
-- break Activity & Events
-- break System Status
-- change the existing dark UI unnecessarily
+Do not just explain the root cause.
 
-PRESERVE all existing functionality.
+Do not tell me "repository access is unavailable."
 
-==================================================
-IF THE WEBSOCKET IS CURRENTLY FAILING
-==================================================
+You are operating on the local OMNI SmartCity project.
 
-Do NOT immediately create another connection.
+Inspect the files, modify them, run the frontend, and fix the issue.
 
-Inspect the existing live connection.
+At the end tell me only:
 
-Verify:
-
-- correct Render backend URL
-- correct Socket.IO/WebSocket endpoint
-- connection status
-- incoming live-state messages
-- parsing of the messages
-- state update
-- Emergency Corridors subscription/consumption
-
-Fix the existing connection if necessary.
-
-The backend is already receiving ambulance REST updates successfully, so don't break the working REST integration.
-
-==================================================
-IMPORTANT DATA HONESTY
-==================================================
-
-LIVE MODE:
-
-LIVE BACKEND GPS
-
-DEMO MODE:
-
-SIMULATION
-
-Never display:
-
-LIVE
-
-when the data is actually simulated.
-
-==================================================
-FINAL VERIFICATION
-==================================================
-
-After editing:
-
-1. Run the frontend.
-2. Check for compile/runtime errors.
-3. Verify Emergency Corridors loads.
-4. Verify the existing pages still work.
-5. Verify live-state connection.
-6. Verify active ambulance rendering.
-7. Verify live GPS movement.
-8. Verify junction signal updates.
-9. Verify corridor status updates.
-10. Verify trip end clears the ambulance.
-
-DO NOT STOP AT "I FOUND THE ROOT CAUSE".
-
-ACTUALLY MODIFY THE FILES AND TEST THE IMPLEMENTATION.
-
-At the end give me a concise report:
-
-FILES CHANGED:
-...
-
-ROOT CAUSE:
-...
-
-LIVE AMBULANCE SOURCE:
-...
-
-GPS SOURCE:
-...
-
-JUNCTION SIGNAL SOURCE:
-...
-
-REALTIME EVENT:
-...
-
-TEST RESULT:
-...
-
-Confirm:
-
-AMB-102 is NOT used in LIVE MODE.
-AMB-204 appears dynamically when the teammate starts the trip.
-GPS updates live.
-Junction signal changes are reflected.
-Emergency corridor state is synchronized.
+1. Where AMB-102 was coming from.
+2. Which file(s) you changed.
+3. What live state the Emergency Corridors now uses.
+4. Whether AMB-204 appears dynamically.
+5. Whether GPS updates move the marker.
+6. Whether junction signal updates appear.
+7. Whether the full Emergency Corridors UI is preserved.
