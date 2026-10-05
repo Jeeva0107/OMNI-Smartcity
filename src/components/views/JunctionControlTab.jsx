@@ -1,163 +1,619 @@
 import React, { useState } from 'react';
 import { useTraffic } from '../../context/TrafficContext';
-import { JunctionModal } from '../map/CityMap';
+import { SourceBadge } from '../map/GeoMap';
 import {
-  AlertTriangle,
-  CheckCircle2,
-  Clock,
-  Play,
-  RotateCcw,
-  Sliders,
-  TrafficCone,
-  Zap
+  AlertTriangle, CheckCircle2, Clock, Play, RotateCcw, Sliders, TrafficCone, Zap,
+  ShieldCheck, ShieldAlert, Radio, UserCheck, Lock, Activity, Ambulance, Check, RefreshCw, Cpu
 } from 'lucide-react';
 
 export const JunctionControlTab = () => {
-  const { junctions, transitionSignal } = useTraffic();
-  const [selectedJunctionForModal, setSelectedJunctionForModal] = useState(null);
+  const {
+    junctions,
+    selectedJunctionId,
+    setSelectedJunctionId,
+    transitionSignal,
+    restoreAIControl,
+    switchFallbackMode,
+    overrideAIDecision,
+    addEvent,
+    ambulance,
+    tomtomStatus,
+  } = useTraffic();
+
+  const activeJunctionId = selectedJunctionId || 'J1';
+  const j = (junctions && junctions.length > 0) ? (junctions.find(item => item.id === activeJunctionId) || junctions[0]) : null;
+
+  // Manual timing custom modal/input state
+  const [customGreenInput, setCustomGreenInput] = useState(45);
+  const [customRedInput, setCustomRedInput] = useState(35);
+  const [showOverrideForm, setShowOverrideForm] = useState(false);
+
+  if (!j) {
+    return (
+      <div className="flex-1 overflow-y-auto p-6 flex items-center justify-center bg-[#090B0D]">
+        <div className="text-center text-[#8A939B] font-mono text-sm">
+          Loading Junction Analysis Telemetry...
+        </div>
+      </div>
+    );
+  }
+
+  // Derived metrics & confidence logic
+  // The system uses a 0–100 integer scale for confidence throughout.
+  // Mock/simulation data: rule-based integer (e.g. 94, 76, 35).
+  // TomTom LIVE data: TomTom API returns 0–1 float (road sensor data quality),
+  //   normalized to 0–100 in tomtom_traffic.py at ingestion.
+  // Defensive: if a stale 0–1 float ever reaches the frontend, normalize it here too.
+  //
+  // Single shared helper — used for selected junction AND global banner scan.
+  const normalizeConf = (c) => {
+    const v = c != null ? c : 82;
+    return (typeof v === 'number' && v <= 1.0 && v > 0) ? Math.round(v * 100) : Math.round(v);
+  };
+
+  const rawConf = j.confidence != null ? j.confidence : 82;
+  const confidenceScore = normalizeConf(rawConf);
+  const isLowConfidence = confidenceScore < 40;
+  const isModerateConfidence = confidenceScore >= 40 && confidenceScore < 70;
+  const isHighConfidence = confidenceScore >= 70;
+  // Label depends on data source — do NOT call simulated/TomTom data "AI Confidence"
+  const isTomTomLiveJunction = j?.tomtomStatus === 'TOMTOM_LIVE' || j?.dataSource === 'TOMTOM_LIVE';
+  const confidenceLabel = isTomTomLiveJunction ? 'Sensor Data Quality' : 'Decision Confidence';
+
+  // Global low-confidence scan across ALL junctions (drives the top-level alert banner).
+  // This updates automatically whenever the junctions array from live state changes.
+  const allLowConfJunctions = (junctions || []).filter(jn => normalizeConf(jn.confidence) < 40);
+
+  const controlMode = j.controlMode || 'AI_CONTROL';
+  const isAIControl = controlMode === 'AI_CONTROL';
+  const isManual = controlMode === 'MANUAL';
+  const isFallback = controlMode === 'FALLBACK';
+
+  // Emergency corridor check for active junction
+  const isEmergencyRouteJunction = ambulance?.active && ambulance?.routeJunctions?.includes(j.id);
+  const isCurrentAmbulanceNode = isEmergencyRouteJunction && ambulance?.routeJunctions?.[ambulance?.currentJunctionIndex] === j.id;
+
+  const isTomTomLive = j?.tomtomStatus === 'TOMTOM_LIVE' || j?.dataSource === 'TOMTOM_LIVE';
+
+  const handleManualSetSignal = (targetSignal) => {
+    overrideAIDecision(j.id, targetSignal, Number(customGreenInput) || 45, Number(customRedInput) || 35);
+  };
+
+  const handleRestoreAI = () => {
+    restoreAIControl(j.id);
+  };
+
+  const handleSwitchFallback = () => {
+    switchFallbackMode(j.id);
+  };
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 space-y-6">
-      {/* CONTROL HEADER */}
-      <div className="bg-[#14181C] p-4 rounded-xl border border-[#242A30] flex items-center justify-between">
+    <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-[#090B0D] select-none">
+
+      {/* TOP HEADER BANNER & MODE INDICATOR */}
+      <div className="bg-[#14181C] p-4 rounded-xl border border-[#242A30] flex items-center justify-between shadow-lg">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center">
-            <TrafficCone className="w-5 h-5 text-amber-400" />
+          <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center">
+            <Cpu className="w-5 h-5 text-amber-400" />
           </div>
           <div>
-            <h3 className="text-xs font-bold text-white uppercase tracking-wider">
-              Autonomous Signal Coordination & Manual Override Engine
-            </h3>
-            <p className="text-[11px] text-[#737B82]">
-              Real-time phase optimization with safe transition sequence (RED → YELLOW → ALL_RED → GREEN)
+            <div className="flex items-center gap-2.5">
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                Junction Analysis &amp; Control Operations
+              </h3>
+
+              {/* OPERATIONAL MODE BADGE */}
+              {isAIControl && (
+                <span className="px-2.5 py-1 rounded text-[10px] font-mono font-extrabold bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 animate-pulse flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                  AI CONTROL ACTIVE — TIMING AUTOMATICALLY APPLIED
+                </span>
+              )}
+
+              {isManual && (
+                <span className="px-2.5 py-1 rounded text-[10px] font-mono font-extrabold bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                  MANUAL OVERRIDE ACTIVE
+                </span>
+              )}
+
+              {isFallback && (
+                <span className="px-2.5 py-1 rounded text-[10px] font-mono font-extrabold bg-purple-500/20 text-purple-300 border border-purple-500/40 flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
+                  FALLBACK FIXED-TIME MODE (60s GREEN / 60s RED)
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-[#737B82] mt-0.5 font-mono">
+              Operational Node: <strong className="text-white">{j.name} ({j.id})</strong> • Real-Time Adaptive Optimization
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 text-xs font-mono">
-          <span className="px-3 py-1 rounded bg-[#181D21] border border-[#242A30] text-[#B8BEC4]">
-            Monitored Signals: <strong className="text-white">12 Nodes</strong>
+        <div className="flex items-center gap-2 text-xs font-mono">
+          <span className="px-3 py-1.5 rounded bg-[#181D21] border border-[#242A30] text-[#B8BEC4]">
+            {confidenceLabel}: <strong className={confidenceScore >= 70 ? 'text-emerald-400' : confidenceScore >= 40 ? 'text-amber-400' : 'text-red-400'}>{confidenceScore}%</strong>
           </span>
-          <span className="px-3 py-1 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-bold">
-            ● SIGNAL SAFETY GUARD ACTIVE
+          <span className="px-3 py-1.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-bold">
+            ● REAL-TIME TELEMETRY ACTIVE
           </span>
         </div>
       </div>
 
-      {/* JUNCTIONS CARDS GRID (12 JUNCTIONS) */}
-      <div className="grid grid-cols-3 gap-6">
-        {junctions.map((j) => {
-          let statusBadge = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
-          if (j.status === 'CRITICAL') statusBadge = 'bg-red-500/10 text-red-400 border-red-500/30';
-          else if (j.status === 'HIGH') statusBadge = 'bg-amber-500/10 text-amber-400 border-amber-500/30';
-          else if (j.status === 'MODERATE') statusBadge = 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30';
-
-          const needsOptimization = j.signal !== j.recommendedSignal;
-
-          return (
-            <div
-              key={j.id}
-              className={`bg-[#14181C] p-5 rounded-xl border transition-all space-y-4 ${
-                needsOptimization ? 'border-amber-500/40 shadow-glow' : 'border-[#242A30]'
-              }`}
-            >
-              {/* CARD HEADER */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="font-mono font-extrabold text-white text-base px-2.5 py-1 rounded bg-[#181D21] border border-[#242A30]">
-                    {j.id}
-                  </span>
-                  <div>
-                    <h4 className="text-xs font-bold text-white">{j.name}</h4>
-                    <p className="text-[10px] text-[#737B82]">Cam Feed: {j.cameraId}</p>
-                  </div>
-                </div>
-                <span className={`px-2 py-0.5 text-[10px] font-bold rounded border ${statusBadge}`}>
-                  {j.status}
+      {/* ── GLOBAL LOW-CONFIDENCE ALERT BANNER ───────────────────────────────────
+          Derived from ALL junctions in live state. Appears when ≥1 junction has
+          normalized confidence < 40%. Hidden when all junctions are ≥40%.
+          Clicking a junction pill navigates directly to its analysis.
+      ─────────────────────────────────────────────────────────────────────────── */}
+      {allLowConfJunctions.length > 0 && (
+        <div className="bg-red-950/80 border border-red-500/50 rounded-xl p-4 flex items-center justify-between gap-4 shadow-lg">
+          <div className="flex items-start gap-3 min-w-0">
+            <span className="flex h-3 w-3 relative shrink-0 mt-0.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+            </span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 mb-2">
+                <ShieldAlert className="w-4 h-4 text-red-400 shrink-0" />
+                <span className="text-[11px] font-extrabold text-red-300 uppercase tracking-widest font-mono">
+                  ⚠ LOW AI CONFIDENCE ALERT
                 </span>
               </div>
-
-              {/* METRICS ROW */}
-              <div className="grid grid-cols-4 gap-2 text-center bg-[#181D21] p-3 rounded-lg border border-[#242A30]">
-                <div>
-                  <div className="text-[9px] text-[#737B82] font-bold uppercase">Vehicles</div>
-                  <div className="font-mono font-bold text-white text-sm mt-0.5">{j.vehicles}</div>
-                </div>
-                <div>
-                  <div className="text-[9px] text-[#737B82] font-bold uppercase">Queue</div>
-                  <div className="font-mono font-bold text-amber-400 text-sm mt-0.5">{j.queue}</div>
-                </div>
-                <div>
-                  <div className="text-[9px] text-[#737B82] font-bold uppercase">Speed</div>
-                  <div className="font-mono font-bold text-white text-sm mt-0.5">{j.speed}</div>
-                </div>
-                <div>
-                  <div className="text-[9px] text-[#737B82] font-bold uppercase">Cap. %</div>
-                  <div className="font-mono font-bold text-emerald-400 text-sm mt-0.5">{j.downstreamCapacity}%</div>
-                </div>
-              </div>
-
-              {/* CURRENT vs RECOMMENDED SIGNAL COMPARISON */}
-              <div className="p-3 rounded-lg bg-[#0E1114] border border-[#242A30] space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-[#737B82]">Current State:</span>
-                  <span className={`font-mono font-bold px-2 py-0.5 rounded text-[10px] ${
-                    j.signal === 'GREEN' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' :
-                    j.signal === 'YELLOW' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40' :
-                    j.signal === 'ALL_RED' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/40' :
-                    'bg-red-500/20 text-red-400 border border-red-500/40'
-                  }`}>
-                    ● {j.signal}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-[#737B82]">AI Recommendation:</span>
-                  <span className="font-mono font-bold px-2 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/40">
-                    {j.recommendedSignal}
-                  </span>
-                </div>
-
-                {j.recommendedReason && (
-                  <p className="text-[10px] text-[#B8BEC4] pt-1 border-t border-[#242A30] flex items-start gap-1">
-                    <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
-                    <span>{j.recommendedReason}</span>
-                  </p>
-                )}
-              </div>
-
-              {/* SIGNAL ACTION BUTTONS */}
-              <div className="grid grid-cols-3 gap-2 pt-1">
-                <button
-                  onClick={() => transitionSignal(j.id, 'GREEN')}
-                  className="py-1.5 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-black font-extrabold text-[10px] transition-all shadow-sm text-center"
-                >
-                  APPLY RECOM.
-                </button>
-                <button
-                  onClick={() => transitionSignal(j.id, 'YELLOW')}
-                  className="py-1.5 px-2 rounded-lg bg-[#181D21] border border-[#242A30] hover:bg-[#242A30] text-[#B8BEC4] font-bold text-[10px] text-center"
-                >
-                  HOLD
-                </button>
-                <button
-                  onClick={() => setSelectedJunctionForModal(j)}
-                  className="py-1.5 px-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/40 font-bold text-[10px] text-center"
-                >
-                  OVERRIDE
-                </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                {allLowConfJunctions.map(jn => (
+                  <button
+                    key={jn.id}
+                    onClick={() => setSelectedJunctionId(jn.id)}
+                    className="px-2.5 py-1 rounded-lg bg-red-900/70 hover:bg-red-800/80 border border-red-500/60 text-red-200 font-mono font-extrabold text-[11px] transition-all flex items-center gap-1.5"
+                    title={`Select ${jn.id} — ${jn.name}`}
+                  >
+                    <span>{jn.id}</span>
+                    <span className="text-red-400 font-black">{normalizeConf(jn.confidence)}%</span>
+                  </button>
+                ))}
               </div>
             </div>
+          </div>
+          <span className="text-[10px] text-red-300/70 font-mono font-bold uppercase tracking-wider shrink-0 text-right">
+            HUMAN REVIEW REQUIRED<br/>CLICK JUNCTION TO INSPECT &amp; OVERRIDE
+          </span>
+        </div>
+      )}
+
+      {/* JUNCTION SELECTOR TABS (All 12 Monitored Junctions) */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-[#1A2028]">
+        {junctions.map((node) => {
+          const isSelected = node.id === j.id;
+          const isCrit = node.status === 'CRITICAL';
+          const nodeConf = normalizeConf(node.confidence);
+          const isNodeLowConf = nodeConf < 40;
+          const isNodeModConf = nodeConf >= 40 && nodeConf < 70;
+          return (
+            <button
+              key={node.id}
+              onClick={() => setSelectedJunctionId(node.id)}
+              className={`px-3 py-2 rounded-lg text-xs font-mono font-bold transition-all flex items-center gap-2 shrink-0 ${
+                isSelected
+                  ? 'bg-amber-500 text-black shadow-glow'
+                  : isNodeLowConf
+                  ? 'bg-red-950/40 text-red-300 border border-red-500/40 hover:bg-red-950/70'
+                  : isNodeModConf
+                  ? 'bg-amber-950/30 text-amber-300 border border-amber-500/30 hover:bg-amber-950/50'
+                  : 'bg-[#14181C] text-[#8A939B] border border-[#242A30] hover:text-white'
+              }`}
+            >
+              <span>{node.id}</span>
+              <span className={`w-1.5 h-1.5 rounded-full ${
+                isNodeLowConf ? 'bg-red-400 animate-pulse' :
+                isCrit ? 'bg-red-400 pulse-dot' :
+                isNodeModConf ? 'bg-amber-400' :
+                node.status === 'HIGH' ? 'bg-orange-400' : 'bg-emerald-400'
+              }`} />
+              {isNodeLowConf && (
+                <span className="px-1 rounded bg-red-600 text-white text-[9px] font-black">!</span>
+              )}
+            </button>
           );
         })}
       </div>
 
-      {selectedJunctionForModal && (
-        <JunctionModal
-          junction={selectedJunctionForModal}
-          onClose={() => setSelectedJunctionForModal(null)}
-        />
+      {/* LOW-CONFIDENCE ALERT BANNER (<40%) */}
+      {isLowConfidence && (
+        <div className="bg-red-950/60 border border-red-500/60 p-4 rounded-xl flex items-center justify-between shadow-lg">
+          <div className="flex items-center gap-3">
+            <ShieldAlert className="w-7 h-7 text-red-400 shrink-0 animate-pulse" />
+            <div>
+              <h4 className="text-xs font-extrabold text-red-400 uppercase tracking-wider font-mono">
+                🚨 LOW CONFIDENCE — HUMAN REVIEW REQUIRED
+              </h4>
+              <p className="text-[11px] text-red-200/90 mt-0.5">
+                AI Confidence score is critically low (<strong className="text-white">{confidenceScore}%</strong>). Camera lens flare or density ambiguity detected. Controller review required.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setShowOverrideForm(true)}
+              className="px-3 py-1.5 rounded-lg bg-red-500 hover:bg-red-400 text-black font-extrabold text-[11px] font-mono transition-all"
+            >
+              1. Override AI Decision
+            </button>
+            <button
+              onClick={handleSwitchFallback}
+              className="px-3 py-1.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 font-bold text-[11px] font-mono transition-all"
+            >
+              2. Switch to Fallback (60s/60s)
+            </button>
+            <button
+              onClick={handleRestoreAI}
+              className="px-3 py-1.5 rounded-lg bg-[#1D242B] hover:bg-[#252E37] text-white border border-[#3A444F] font-bold text-[11px] font-mono transition-all"
+            >
+              3. Restore AI Control
+            </button>
+          </div>
+        </div>
       )}
+
+      {/* MODERATE-CONFIDENCE ADVISORY BANNER (40% - 69%) */}
+      {isModerateConfidence && (
+        <div className="bg-amber-500/10 border border-amber-500/30 p-3 rounded-xl flex items-center justify-between">
+          <div className="flex items-center gap-2 text-amber-400 text-xs font-mono font-bold">
+            <AlertTriangle className="w-4 h-4" />
+            <span>MODERATE CONFIDENCE ({confidenceScore}%) — ADVISORY MONITORING ACTIVE</span>
+          </div>
+          <span className="text-[10px] text-amber-300/80 font-mono">AI operating normally under supervisory monitoring</span>
+        </div>
+      )}
+
+      {/* MAIN OPERATIONAL DRILL-DOWN GRID */}
+      <div className="grid grid-cols-12 gap-6">
+
+        {/* LEFT COLUMN: JUNCTION TELEMETRY & LIVE STATE (4 Cols) */}
+        <div className="col-span-4 space-y-4">
+
+          {/* Junction Overview Card */}
+          <div className="bg-[#14181C] p-4 rounded-xl border border-[#242A30] space-y-3">
+            <div className="flex items-center justify-between border-b border-[#242A30] pb-2">
+              <div>
+                <span className="text-[9px] font-mono font-bold text-[#5A636B] uppercase">{j.id} • Chennai Metro</span>
+                <h4 className="text-sm font-bold text-white">{j.name}</h4>
+              </div>
+              <SourceBadge source={isTomTomLive ? 'TOMTOM_LIVE' : (j.dataSource || 'SIMULATED')} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-[10px]">
+              <div className="bg-[#0E1114] p-2.5 rounded-lg border border-[#1E2530]">
+                <div className="text-[#5A636B]">Congestion Status</div>
+                <div className={`font-bold mt-0.5 ${
+                  j.status === 'CRITICAL' ? 'text-red-400' : j.status === 'HIGH' ? 'text-orange-400' : 'text-emerald-400'
+                }`}>{j.status}</div>
+              </div>
+
+              <div className="bg-[#0E1114] p-2.5 rounded-lg border border-[#1E2530]">
+                <div className="text-[#5A636B]">Current Signal Phase</div>
+                <div className="font-mono font-bold text-amber-400 mt-0.5">● {j.signal}</div>
+              </div>
+            </div>
+
+            {/* Coordinates & Camera */}
+            <div className="text-[10px] text-[#737B82] space-y-1 font-mono pt-1">
+              <div>Address: <span className="text-white">{j.address}</span></div>
+              <div>Coords: {j.lat}° N, {j.lng}° E</div>
+              <div>Camera Ref: <span className="text-white">{j.cameraId || 'CAM-01'}</span></div>
+            </div>
+          </div>
+
+          {/* TomTom Live Telemetry Card */}
+          <div className="bg-[#14181C] p-4 rounded-xl border border-[#242A30] space-y-2">
+            <div className="flex items-center justify-between text-[9px] font-bold text-[#5A636B] uppercase tracking-wider mb-1">
+              <span>TomTom Live Traffic Telemetry</span>
+              <SourceBadge source="TOMTOM_LIVE" />
+            </div>
+
+            <div className="space-y-1.5 text-xs">
+              <div className="flex justify-between border-b border-[#1E2530] py-1">
+                <span className="text-[#8A939B]">Current Speed</span>
+                <span className="font-mono font-bold text-white">{j.speed != null ? `${j.speed} km/h` : '--'}</span>
+              </div>
+              <div className="flex justify-between border-b border-[#1E2530] py-1">
+                <span className="text-[#8A939B]">Free Flow Speed</span>
+                <span className="font-mono font-bold text-cyan-400">{j.freeFlowSpeed != null ? `${j.freeFlowSpeed} km/h` : '--'}</span>
+              </div>
+              <div className="flex justify-between border-b border-[#1E2530] py-1">
+                <span className="text-[#8A939B]">Current Travel Time</span>
+                <span className="font-mono font-bold text-white">{j.travelTime != null ? `${j.travelTime} s` : '--'}</span>
+              </div>
+              <div className="flex justify-between border-b border-[#1E2530] py-1">
+                <span className="text-[#8A939B]">Free Flow Time</span>
+                <span className="font-mono font-bold text-white">{j.freeFlowTravelTime != null ? `${j.freeFlowTravelTime} s` : '--'}</span>
+              </div>
+              <div className="flex justify-between border-b border-[#1E2530] py-1">
+                <span className="text-[#8A939B]">TomTom Telemetry Score</span>
+                <span className="font-mono font-bold text-emerald-400">{confidenceScore}%</span>
+              </div>
+              <div className="flex justify-between py-1 text-[10px] text-[#5A636B] font-mono">
+                <span>Last Refreshed:</span>
+                <span className="text-[#8A939B] font-bold">{j.lastUpdated || 'JUST NOW'}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Emergency Corridor Status for Junction */}
+          {isEmergencyRouteJunction && (
+            <div className="bg-red-950/30 p-4 rounded-xl border border-red-500/40 space-y-2 shadow-lg">
+              <div className="flex items-center gap-2 text-red-400 font-bold text-xs">
+                <Ambulance className="w-4 h-4 animate-pulse" />
+                <span>EMERGENCY CORRIDOR ON ROUTE</span>
+              </div>
+              <p className="text-[11px] text-[#B8BEC4]">
+                Ambulance {ambulance.id} corridor active via {j.id}. Green phase extended.
+              </p>
+              {isCurrentAmbulanceNode && (
+                <div className="px-2 py-1 rounded bg-red-500 text-white font-mono text-[10px] font-bold text-center animate-pulse">
+                  AMBULANCE AT JUNCTION NOW
+                </div>
+              )}
+            </div>
+          )}
+
+        </div>
+
+        {/* RIGHT COLUMN: CURRENTLY APPLIED SIGNAL DECISION & CONTROLLER OVERRIDE (8 Cols) */}
+        <div className="col-span-8 space-y-4">
+
+          {/* CURRENTLY APPLIED SIGNAL DECISION CARD */}
+          <div className="bg-[#14181C] p-5 rounded-xl border border-[#242A30] space-y-5 shadow-xl">
+
+            {/* Header / Mode Indicator */}
+            <div className="flex items-center justify-between border-b border-[#242A30] pb-3">
+              <div>
+                <span className="text-[9px] font-bold text-[#5A636B] uppercase tracking-wider font-mono">
+                  Currently Applied Signal Decision
+                </span>
+                <h3 className="text-base font-bold text-white flex items-center gap-2 mt-0.5">
+                  <Zap className="w-4 h-4 text-amber-400" />
+                  <span>ACTIVE PHASE:</span>
+                  <span className={`px-3 py-1 rounded text-xs font-mono font-extrabold border ${
+                    j.signal === 'GREEN' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' :
+                    j.signal === 'RED' ? 'bg-red-500/20 text-red-400 border-red-500/40' :
+                    j.signal === 'YELLOW' ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' :
+                    'bg-purple-500/20 text-purple-400 border-purple-500/40'
+                  }`}>
+                    ● {j.signal}
+                  </span>
+                </h3>
+              </div>
+
+              <div className="text-right flex items-center gap-3">
+                {/* AI Control Label */}
+                <div className="text-right">
+                  <div className="text-[9px] text-[#5A636B] font-mono">STATUS</div>
+                  <div className={`px-3 py-1 rounded text-xs font-mono font-extrabold border ${
+                    isAIControl ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' :
+                    isManual ? 'bg-amber-500/15 text-amber-400 border-amber-500/30' :
+                    'bg-purple-500/15 text-purple-300 border-purple-500/30'
+                  }`}>
+                    {isAIControl ? 'AI CONTROL ACTIVE' : isManual ? 'MANUAL OVERRIDE' : 'FALLBACK FIXED-TIME'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* SIGNAL TIMING METRICS (Active phase, Green/Red durations, Remaining time) */}
+            <div className="grid grid-cols-4 gap-3">
+              <div className="bg-[#0E1114] p-3 rounded-xl border border-[#1E2530]">
+                <div className="text-[9px] text-[#5A636B] font-mono font-bold uppercase">Current Phase</div>
+                <div className="text-xs font-bold text-white mt-1 truncate" title={j.currentPhase}>
+                  {j.currentPhase || 'Phase 1: Main Arterial'}
+                </div>
+              </div>
+
+              <div className="bg-[#0E1114] p-3 rounded-xl border border-[#1E2530]">
+                <div className="text-[9px] text-[#5A636B] font-mono font-bold uppercase">Green Duration</div>
+                <div className="text-lg font-data font-bold text-emerald-400 mt-0.5">
+                  {j.greenDuration || 45} <span className="text-xs text-[#5A636B]">sec</span>
+                </div>
+              </div>
+
+              <div className="bg-[#0E1114] p-3 rounded-xl border border-[#1E2530]">
+                <div className="text-[9px] text-[#5A636B] font-mono font-bold uppercase">Red Duration</div>
+                <div className="text-lg font-data font-bold text-red-400 mt-0.5">
+                  {j.redDuration || 35} <span className="text-xs text-[#5A636B]">sec</span>
+                </div>
+              </div>
+
+              <div className="bg-[#0E1114] p-3 rounded-xl border border-amber-500/30 bg-amber-500/5">
+                <div className="text-[9px] text-amber-400 font-mono font-bold uppercase flex items-center justify-between">
+                  <span>Remaining Time</span>
+                  <Clock className="w-3 h-3 text-amber-400 animate-spin" />
+                </div>
+                <div className="text-lg font-data font-bold text-amber-300 mt-0.5">
+                  {j.remainingTime != null ? j.remainingTime : 22} <span className="text-xs text-amber-400/80">sec</span>
+                </div>
+              </div>
+            </div>
+
+            {/* RATIONALE & EXPECTED IMPACT */}
+            <div className="bg-[#0E1114] p-4 rounded-xl border border-[#1E2530] space-y-3">
+              <div>
+                <div className="text-[10px] font-mono font-bold text-[#737B82] uppercase tracking-wider mb-1">
+                  Why AI Selected This Timing (Rationale)
+                </div>
+                <p className="text-xs text-[#B8BEC4] leading-relaxed">
+                  {j.signalReason || j.recommendedReason || 'Adaptive queue evaluation indicates arterial approach volume surge. Signal phase duration automatically optimized for peak corridor throughput.'}
+                </p>
+              </div>
+
+              <div className="pt-2 border-t border-[#1E2530] flex items-center justify-between text-[11px]">
+                <span className="text-[#5A636B] font-mono">Expected / Observed Impact:</span>
+                <span className="font-mono font-bold text-emerald-400">
+                  {j.expectedImpact || '-28% Queue Delay • +14 km/h Corridor Speed'}
+                </span>
+              </div>
+            </div>
+
+            {/* TRAFFIC FACTORS USED MATRIX */}
+            <div className="space-y-2">
+              <div className="text-[10px] font-mono font-bold text-[#737B82] uppercase tracking-wider flex items-center justify-between">
+                <span>Traffic Factors Evaluated by AI Engine</span>
+                <SourceBadge source="DERIVED" label="LIVE FACTORS" />
+              </div>
+
+              <div className="grid grid-cols-3 gap-2.5 text-[10px]">
+                <div className="bg-[#0E1114] p-2.5 rounded-lg border border-[#1E2530]">
+                  <div className="text-[#5A636B]">Queue Length</div>
+                  <div className="font-mono font-bold text-white mt-0.5">{j.factors?.queue || `${j.queue} vehicles`}</div>
+                </div>
+
+                <div className="bg-[#0E1114] p-2.5 rounded-lg border border-[#1E2530]">
+                  <div className="text-[#5A636B]">Avg Waiting Time</div>
+                  <div className="font-mono font-bold text-white mt-0.5">{j.factors?.waitingTime || `${Math.round(j.queue * 3.2)}s avg wait`}</div>
+                </div>
+
+                <div className="bg-[#0E1114] p-2.5 rounded-lg border border-[#1E2530]">
+                  <div className="text-[#5A636B]">Traffic Density</div>
+                  <div className="font-mono font-bold text-white mt-0.5">{j.factors?.density || `${Math.round((j.vehicles / 95) * 100)}% capacity`}</div>
+                </div>
+
+                <div className="bg-[#0E1114] p-2.5 rounded-lg border border-[#1E2530]">
+                  <div className="text-[#5A636B]">Traffic Flow Rate</div>
+                  <div className="font-mono font-bold text-white mt-0.5">{j.factors?.flow || `${j.flow || 38} v/min`}</div>
+                </div>
+
+                <div className="bg-[#0E1114] p-2.5 rounded-lg border border-[#1E2530]">
+                  <div className="text-[#5A636B]">Emergency Priority</div>
+                  <div className={`font-mono font-bold mt-0.5 ${isEmergencyRouteJunction ? 'text-red-400' : 'text-emerald-400'}`}>
+                    {j.factors?.emergencyPriority || (isEmergencyRouteJunction ? 'HIGH (+40%)' : 'NORMAL (0%)')}
+                  </div>
+                </div>
+
+                <div className="bg-[#0E1114] p-2.5 rounded-lg border border-[#1E2530]">
+                  <div className="text-[#5A636B]">Downstream Capacity</div>
+                  <div className="font-mono font-bold text-emerald-400 mt-0.5">{j.factors?.downstreamCap || `${j.downstreamCapacity}% available`}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* CONTROLLER OVERRIDE ACTION PANEL */}
+            <div className="pt-3 border-t border-[#242A30] space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">
+                    Controller Override Options
+                  </h4>
+                  <p className="text-[10px] text-[#737B82]">
+                    Controller intervention is an exception workflow. Normal AI decisions are applied automatically.
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => setShowOverrideForm(!showOverrideForm)}
+                  className="px-3 py-1.5 rounded-lg bg-[#1E2530] hover:bg-[#283240] text-amber-400 font-bold text-[11px] font-mono border border-amber-500/30 transition-colors flex items-center gap-1.5"
+                >
+                  <Sliders className="w-3.5 h-3.5" />
+                  <span>{showOverrideForm ? 'Hide Manual Settings' : 'Override AI Decision'}</span>
+                </button>
+              </div>
+
+              {/* OVERRIDE BUTTONS BAR */}
+              <div className="grid grid-cols-3 gap-3">
+
+                {/* 1. Set Manual Signal Timing */}
+                <button
+                  onClick={() => handleManualSetSignal('GREEN')}
+                  className="py-2.5 px-3 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 font-bold text-xs transition-all text-center flex items-center justify-center gap-2"
+                >
+                  <Play className="w-4 h-4 fill-current" />
+                  <span>SET MANUAL GREEN</span>
+                </button>
+
+                {/* 2. Switch to Normal / Fallback Timing */}
+                <button
+                  onClick={handleSwitchFallback}
+                  className={`py-2.5 px-3 rounded-xl font-bold text-xs transition-all text-center flex items-center justify-center gap-2 border ${
+                    isFallback
+                      ? 'bg-purple-600 text-white border-purple-400 shadow-glow'
+                      : 'bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30'
+                  }`}
+                >
+                  <Lock className="w-4 h-4" />
+                  <span>{isFallback ? 'FALLBACK ACTIVE (60s/60s)' : 'SWITCH TO FALLBACK (60s/60s)'}</span>
+                </button>
+
+                {/* 3. Restore AI Control */}
+                <button
+                  onClick={handleRestoreAI}
+                  className={`py-2.5 px-3 rounded-xl font-bold text-xs transition-all text-center flex items-center justify-center gap-2 border ${
+                    isAIControl
+                      ? 'bg-emerald-500 text-black border-emerald-400 shadow-glow'
+                      : 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30'
+                  }`}
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  <span>{isAIControl ? 'AI CONTROL ACTIVE' : 'RESTORE AI CONTROL'}</span>
+                </button>
+              </div>
+
+              {/* CUSTOM MANUAL TIMING FORM (Expands when clicked) */}
+              {showOverrideForm && (
+                <div className="bg-[#0E1114] p-4 rounded-xl border border-amber-500/30 space-y-3">
+                  <div className="text-[10px] font-mono font-bold text-amber-400 uppercase tracking-wider">
+                    Configure Manual Signal Durations
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] text-[#737B82] block mb-1">Manual Green Duration (seconds)</label>
+                      <input
+                        type="number"
+                        min="10"
+                        max="180"
+                        value={customGreenInput}
+                        onChange={e => setCustomGreenInput(e.target.value)}
+                        className="w-full bg-[#14181C] border border-[#242A30] rounded-lg px-3 py-1.5 text-xs text-white font-mono outline-none focus:border-amber-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] text-[#737B82] block mb-1">Manual Red Duration (seconds)</label>
+                      <input
+                        type="number"
+                        min="10"
+                        max="180"
+                        value={customRedInput}
+                        onChange={e => setCustomRedInput(e.target.value)}
+                        className="w-full bg-[#14181C] border border-[#242A30] rounded-lg px-3 py-1.5 text-xs text-white font-mono outline-none focus:border-amber-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={() => handleManualSetSignal('GREEN')}
+                      className="px-4 py-1.5 rounded-lg bg-emerald-500 text-black font-extrabold text-xs font-mono"
+                    >
+                      Apply Manual GREEN
+                    </button>
+                    <button
+                      onClick={() => handleManualSetSignal('RED')}
+                      className="px-4 py-1.5 rounded-lg bg-red-500 text-white font-extrabold text-xs font-mono"
+                    >
+                      Apply Manual RED
+                    </button>
+                  </div>
+                </div>
+              )}
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
     </div>
   );
 };
+
+export default JunctionControlTab;

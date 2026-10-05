@@ -19,8 +19,8 @@ export const INITIAL_JUNCTIONS = [
     speed: 48,
     flow: 42,
     signal: 'GREEN',
-    recommendedSignal: 'GREEN',
-    signalReason: 'Flow velocity within normal range along GST Road. No intervention required.',
+    recommendedSignal: 'RED',
+    signalReason: 'GST Road arterial approach queue clear (queue: 4). AI recommends transitioning green phase to Inner Ring Road cross-street for traffic fairness.',
     pedestrians: 3,
     downstreamCapacity: 88,
     cameraId: 'CAM-01',
@@ -28,7 +28,22 @@ export const INITIAL_JUNCTIONS = [
     nearestHospital: 'MIOT International Hospital (2.1 km)',
     nearbyLandmarks: ['Kathipara Urban Square', 'Guindy Metro Station', 'Chennai International Airport'],
     lastUpdated: '1s ago',
-    dataSource: 'SIMULATED'
+    dataSource: 'SIMULATED',
+    confidence: 94,
+    controlMode: 'AI_CONTROL',
+    currentPhase: 'Phase 1: GST Road Main Arterial Green',
+    greenDuration: 45,
+    redDuration: 30,
+    remainingTime: 22,
+    expectedImpact: '-35% Queue Delay • +18 km/h Arterial Throughput',
+    factors: {
+      queue: '4 vehicles',
+      waitingTime: '12s avg wait',
+      density: '24% capacity',
+      flow: '42 v/min',
+      emergencyPriority: 'NORMAL (0%)',
+      downstreamCap: '88% available'
+    }
   },
   {
     id: 'J2',
@@ -43,7 +58,7 @@ export const INITIAL_JUNCTIONS = [
     flow: 19,
     signal: 'RED',
     recommendedSignal: 'GREEN',
-    signalReason: 'High queue on Anna Salai northbound approach (21 vehicles). Recommend green phase extension.',
+    signalReason: 'High queue on Anna Salai northbound approach (21 vehicles). AI automatically applied green phase extension to dissipate queue.',
     pedestrians: 14,
     downstreamCapacity: 62,
     cameraId: 'CAM-02',
@@ -51,7 +66,22 @@ export const INITIAL_JUNCTIONS = [
     nearestHospital: 'Apollo Hospitals Greams Road (1.2 km)',
     nearbyLandmarks: ['US Consulate General', 'Semmozhi Poonga', 'Anna Salai Flyover'],
     lastUpdated: 'Just now',
-    dataSource: 'SIMULATED'
+    dataSource: 'SIMULATED',
+    confidence: 76,
+    controlMode: 'AI_CONTROL',
+    currentPhase: 'Phase 2: Nungambakkam High Road Red / Anna Salai Prep',
+    greenDuration: 55,
+    redDuration: 35,
+    remainingTime: 14,
+    expectedImpact: '-22% Queue Buildup • +10 km/h Flow Speed',
+    factors: {
+      queue: '21 vehicles',
+      waitingTime: '68s avg wait',
+      density: '78% capacity',
+      flow: '19 v/min',
+      emergencyPriority: 'HIGH (+40% - Ambulance Corridor Route)',
+      downstreamCap: '62% available'
+    }
   },
   {
     id: 'J3',
@@ -65,8 +95,8 @@ export const INITIAL_JUNCTIONS = [
     speed: 45,
     flow: 38,
     signal: 'GREEN',
-    recommendedSignal: 'GREEN',
-    signalReason: 'Low queue density on Poonamallee High Road corridor. Bus freight movement steady.',
+    recommendedSignal: 'RED',
+    signalReason: 'Poonamallee High Road queue clear (queue: 6). AI recommends cross-street green phase for CMBT bus terminal entrance.',
     pedestrians: 2,
     downstreamCapacity: 90,
     cameraId: 'CAM-03',
@@ -74,7 +104,22 @@ export const INITIAL_JUNCTIONS = [
     nearestHospital: 'MGM Healthcare (3.5 km)',
     nearbyLandmarks: ['CMBT Bus Terminus', 'Koyambedu Wholesale Market', 'Rohini Silver Screens'],
     lastUpdated: '3s ago',
-    dataSource: 'SIMULATED'
+    dataSource: 'SIMULATED',
+    confidence: 84,
+    controlMode: 'AI_CONTROL',
+    currentPhase: 'Phase 1: Poonamallee High Road Arterial Green',
+    greenDuration: 40,
+    redDuration: 30,
+    remainingTime: 19,
+    expectedImpact: '-28% Bus Terminal Exit Congestion',
+    factors: {
+      queue: '6 vehicles',
+      waitingTime: '15s avg wait',
+      density: '32% capacity',
+      flow: '38 v/min',
+      emergencyPriority: 'NORMAL (0%)',
+      downstreamCap: '90% available'
+    }
   },
   {
     id: 'J4',
@@ -89,7 +134,7 @@ export const INITIAL_JUNCTIONS = [
     flow: 11,
     signal: 'RED',
     recommendedSignal: 'GREEN',
-    signalReason: 'Critical congestion at OMR entry. Prevent downstream spillback to Adyar flyover. Immediate green phase extension.',
+    signalReason: 'Critical congestion at OMR entry. Downstream capacity bottleneck and sensor occlusions detected.',
     pedestrians: 8,
     downstreamCapacity: 32,
     cameraId: 'CAM-04',
@@ -97,7 +142,22 @@ export const INITIAL_JUNCTIONS = [
     nearestHospital: 'Fortis Malar Hospital (1.8 km)',
     nearbyLandmarks: ['IIT Madras Gate', 'CLRI Campus', 'Madhya Kailash Temple'],
     lastUpdated: '2s ago',
-    dataSource: 'SIMULATED'
+    dataSource: 'SIMULATED',
+    confidence: 35,
+    controlMode: 'AI_CONTROL',
+    currentPhase: 'Phase 3: OMR Entry Red Phase (Hold)',
+    greenDuration: 60,
+    redDuration: 45,
+    remainingTime: 8,
+    expectedImpact: 'Prevent Downstream Spillback to Adyar Flyover',
+    factors: {
+      queue: '34 vehicles',
+      waitingTime: '110s avg wait',
+      density: '92% capacity',
+      flow: '11 v/min',
+      emergencyPriority: 'NORMAL (0%)',
+      downstreamCap: '32% available (CRITICAL BOTTLENECK)'
+    }
   },
   {
     id: 'J5',
@@ -112,7 +172,7 @@ export const INITIAL_JUNCTIONS = [
     flow: 15,
     signal: 'RED',
     recommendedSignal: 'GREEN',
-    signalReason: 'Queue buildup on OMR southbound approach. Signal optimization recommended for IT park rush.',
+    signalReason: 'Queue buildup on OMR southbound approach. Signal optimization applied for IT park peak traffic.',
     pedestrians: 22,
     downstreamCapacity: 48,
     cameraId: 'CAM-05',
@@ -120,7 +180,22 @@ export const INITIAL_JUNCTIONS = [
     nearestHospital: 'Voluntary Health Services (VHS) Hospital (0.8 km)',
     nearbyLandmarks: ['Tidel Park Chennai', 'Taramani MRTS Station', 'Ascendas International Tech Park'],
     lastUpdated: 'Just now',
-    dataSource: 'SIMULATED'
+    dataSource: 'SIMULATED',
+    confidence: 58,
+    controlMode: 'AI_CONTROL',
+    currentPhase: 'Phase 2: CSIR Road Cross-Street Green / OMR Red',
+    greenDuration: 50,
+    redDuration: 40,
+    remainingTime: 27,
+    expectedImpact: '-18% Peak Hour Delay on IT Corridor',
+    factors: {
+      queue: '22 vehicles',
+      waitingTime: '75s avg wait',
+      density: '74% capacity',
+      flow: '15 v/min',
+      emergencyPriority: 'NORMAL (0%)',
+      downstreamCap: '48% available'
+    }
   },
   {
     id: 'J6',
@@ -134,8 +209,8 @@ export const INITIAL_JUNCTIONS = [
     speed: 28,
     flow: 24,
     signal: 'YELLOW',
-    recommendedSignal: 'GREEN',
-    signalReason: 'Moderate queue on Vijaya Nagar flyover arm. Phase stagger with J5 recommended.',
+    recommendedSignal: 'ALL_RED',
+    signalReason: 'Clearance yellow active on 100 Feet Bypass arm. AI automatically executing ALL_RED safety interval before cross-street green.',
     pedestrians: 5,
     downstreamCapacity: 71,
     cameraId: 'CAM-06',
@@ -143,7 +218,22 @@ export const INITIAL_JUNCTIONS = [
     nearestHospital: 'Prashanth Super Speciality Hospital (1.5 km)',
     nearbyLandmarks: ['Phoenix Marketcity Chennai', 'Velachery Railway Station', 'Grand Square Mall'],
     lastUpdated: '4s ago',
-    dataSource: 'SIMULATED'
+    dataSource: 'SIMULATED',
+    confidence: 88,
+    controlMode: 'AI_CONTROL',
+    currentPhase: 'Phase 4: Clearance Yellow Interval',
+    greenDuration: 45,
+    redDuration: 35,
+    remainingTime: 3,
+    expectedImpact: 'Safe Inter-Phase Clearance • Zero Intersect Conflicts',
+    factors: {
+      queue: '13 vehicles',
+      waitingTime: '38s avg wait',
+      density: '52% capacity',
+      flow: '24 v/min',
+      emergencyPriority: 'NORMAL (0%)',
+      downstreamCap: '71% available'
+    }
   },
   {
     id: 'J7',
@@ -158,7 +248,7 @@ export const INITIAL_JUNCTIONS = [
     flow: 31,
     signal: 'GREEN',
     recommendedSignal: 'GREEN',
-    signalReason: 'Clear corridor. Hospital ER approach ramp must remain unobstructed.',
+    signalReason: 'Clear corridor. Hospital ER approach ramp priority automatically active.',
     pedestrians: 11,
     downstreamCapacity: 94,
     cameraId: 'CAM-07',
@@ -166,7 +256,22 @@ export const INITIAL_JUNCTIONS = [
     nearestHospital: 'Rajiv Gandhi Govt General Hospital (0.1 km — DIRECT ER ACCESS)',
     nearbyLandmarks: ['Chennai Central Railway Station', 'Southern Railway HQ', 'Ripon Building'],
     lastUpdated: 'Just now',
-    dataSource: 'SIMULATED'
+    dataSource: 'SIMULATED',
+    confidence: 96,
+    controlMode: 'AI_CONTROL',
+    currentPhase: 'Phase 1: ER Priority Green Wave',
+    greenDuration: 60,
+    redDuration: 25,
+    remainingTime: 34,
+    expectedImpact: 'Unobstructed ER Access • +22 km/h Emergency Speed',
+    factors: {
+      queue: '9 vehicles',
+      waitingTime: '18s avg wait',
+      density: '41% capacity',
+      flow: '31 v/min',
+      emergencyPriority: 'HIGH (+50% - Hospital Gate Clearance)',
+      downstreamCap: '94% available'
+    }
   },
   {
     id: 'J8',
@@ -181,7 +286,7 @@ export const INITIAL_JUNCTIONS = [
     flow: 17,
     signal: 'RED',
     recommendedSignal: 'GREEN',
-    signalReason: 'Significant queue on Anna Salai northbound. Green phase extension advised.',
+    signalReason: 'Significant queue on Anna Salai northbound. Camera lens flare causing visual metric variance.',
     pedestrians: 19,
     downstreamCapacity: 55,
     cameraId: 'CAM-08',
@@ -189,7 +294,22 @@ export const INITIAL_JUNCTIONS = [
     nearestHospital: 'Government Peripheral Hospital Saidapet (0.6 km)',
     nearbyLandmarks: ['Saidapet Court', 'Maraimalai Adigal Bridge', 'Anna University'],
     lastUpdated: 'Just now',
-    dataSource: 'SIMULATED'
+    dataSource: 'SIMULATED',
+    confidence: 38,
+    controlMode: 'AI_CONTROL',
+    currentPhase: 'Phase 2: Mount Road Cross-Street Green',
+    greenDuration: 50,
+    redDuration: 40,
+    remainingTime: 11,
+    expectedImpact: 'Relieve Anna Salai Northbound Queue',
+    factors: {
+      queue: '19 vehicles',
+      waitingTime: '62s avg wait',
+      density: '72% capacity',
+      flow: '17 v/min',
+      emergencyPriority: 'NORMAL (0%)',
+      downstreamCap: '55% available'
+    }
   },
   {
     id: 'J9',
@@ -203,8 +323,8 @@ export const INITIAL_JUNCTIONS = [
     speed: 52,
     flow: 40,
     signal: 'GREEN',
-    recommendedSignal: 'GREEN',
-    signalReason: 'High velocity flow along OMR IT Corridor.',
+    recommendedSignal: 'RED',
+    signalReason: 'OMR IT corridor approach clear (queue: 3). AI automatically balanced green phase to ECR link road.',
     pedestrians: 4,
     downstreamCapacity: 92,
     cameraId: 'CAM-09',
@@ -212,7 +332,22 @@ export const INITIAL_JUNCTIONS = [
     nearestHospital: 'Gleneagles Global Health City (2.5 km)',
     nearbyLandmarks: ['ELCOT SEZ IT Park', 'Infosys Sholinganallur', 'Perumbakkam Main Road'],
     lastUpdated: '5s ago',
-    dataSource: 'SIMULATED'
+    dataSource: 'SIMULATED',
+    confidence: 91,
+    controlMode: 'AI_CONTROL',
+    currentPhase: 'Phase 1: OMR Main Expressway Green',
+    greenDuration: 45,
+    redDuration: 30,
+    remainingTime: 28,
+    expectedImpact: 'Smooth Expressway Flow • Optimized ECR Link Clearance',
+    factors: {
+      queue: '3 vehicles',
+      waitingTime: '10s avg wait',
+      density: '20% capacity',
+      flow: '40 v/min',
+      emergencyPriority: 'NORMAL (0%)',
+      downstreamCap: '92% available'
+    }
   },
   {
     id: 'J10',
@@ -226,8 +361,8 @@ export const INITIAL_JUNCTIONS = [
     speed: 46,
     flow: 37,
     signal: 'GREEN',
-    recommendedSignal: 'GREEN',
-    signalReason: 'Normal flow on Mount-Poonamallee Road corridor. No action required.',
+    recommendedSignal: 'YELLOW',
+    signalReason: 'Green phase duration completed. AI automatically preparing clearance yellow before switching to Mount-Poonamallee Road arm.',
     pedestrians: 15,
     downstreamCapacity: 89,
     cameraId: 'CAM-10',
@@ -235,7 +370,22 @@ export const INITIAL_JUNCTIONS = [
     nearestHospital: 'Sri Ramachandra Medical Centre (1.5 km)',
     nearbyLandmarks: ['Porur Lake', 'Sri Ramachandra Medical College Gate', 'DLF Cybercity Porur'],
     lastUpdated: '2s ago',
-    dataSource: 'SIMULATED'
+    dataSource: 'SIMULATED',
+    confidence: 85,
+    controlMode: 'AI_CONTROL',
+    currentPhase: 'Phase 1: Arcot Road Approach Green',
+    greenDuration: 40,
+    redDuration: 35,
+    remainingTime: 6,
+    expectedImpact: 'Equitable Cycle Split • Smooth DLF Tech Park Access',
+    factors: {
+      queue: '4 vehicles',
+      waitingTime: '14s avg wait',
+      density: '28% capacity',
+      flow: '37 v/min',
+      emergencyPriority: 'NORMAL (0%)',
+      downstreamCap: '89% available'
+    }
   },
   {
     id: 'J11',
@@ -249,8 +399,8 @@ export const INITIAL_JUNCTIONS = [
     speed: 29,
     flow: 25,
     signal: 'YELLOW',
-    recommendedSignal: 'GREEN',
-    signalReason: 'Moderate queue dissipation recommended for Inner Ring Road northbound traffic.',
+    recommendedSignal: 'ALL_RED',
+    signalReason: 'Transition yellow phase active. AI automatically executing ALL_RED clearance before Inner Ring Road green phase.',
     pedestrians: 7,
     downstreamCapacity: 76,
     cameraId: 'CAM-11',
@@ -258,7 +408,22 @@ export const INITIAL_JUNCTIONS = [
     nearestHospital: 'SIMS Hospital Vadapalani (0.3 km)',
     nearbyLandmarks: ['Vadapalani Murugan Temple', 'Forum Vijaya Mall', 'AVM Studios'],
     lastUpdated: '1s ago',
-    dataSource: 'SIMULATED'
+    dataSource: 'SIMULATED',
+    confidence: 64,
+    controlMode: 'AI_CONTROL',
+    currentPhase: 'Phase 3: Yellow Transition Interval',
+    greenDuration: 45,
+    redDuration: 35,
+    remainingTime: 2,
+    expectedImpact: 'Safe Phase Transition • Reduced Temple Zone Delay',
+    factors: {
+      queue: '14 vehicles',
+      waitingTime: '40s avg wait',
+      density: '54% capacity',
+      flow: '25 v/min',
+      emergencyPriority: 'NORMAL (0%)',
+      downstreamCap: '76% available'
+    }
   },
   {
     id: 'J12',
@@ -272,8 +437,8 @@ export const INITIAL_JUNCTIONS = [
     speed: 55,
     flow: 48,
     signal: 'GREEN',
-    recommendedSignal: 'GREEN',
-    signalReason: 'Port expressway clear. Port truck freight transit operational.',
+    recommendedSignal: 'RED',
+    signalReason: 'Port freight expressway queue clear (queue: 2). AI automatically switching signal to Rajaji Salai local access.',
     pedestrians: 1,
     downstreamCapacity: 96,
     cameraId: 'CAM-12',
@@ -281,7 +446,22 @@ export const INITIAL_JUNCTIONS = [
     nearestHospital: 'Port Trust Hospital (1.2 km)',
     nearbyLandmarks: ['Marina Beach North', 'Chennai Port Trust', 'Fort St. George'],
     lastUpdated: '6s ago',
-    dataSource: 'SIMULATED'
+    dataSource: 'SIMULATED',
+    confidence: 95,
+    controlMode: 'AI_CONTROL',
+    currentPhase: 'Phase 1: Freight Expressway Green',
+    greenDuration: 55,
+    redDuration: 25,
+    remainingTime: 31,
+    expectedImpact: '+25% Freight Transit Velocity',
+    factors: {
+      queue: '2 vehicles',
+      waitingTime: '8s avg wait',
+      density: '18% capacity',
+      flow: '48 v/min',
+      emergencyPriority: 'NORMAL (0%)',
+      downstreamCap: '96% available'
+    }
   }
 ];
 

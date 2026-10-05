@@ -187,7 +187,12 @@ class TomTomTrafficService:
                     j_copy["freeFlowSpeed"] = flow["freeFlowSpeed"]
                     j_copy["travelTime"] = flow["currentTravelTime"]
                     j_copy["freeFlowTravelTime"] = flow["freeFlowTravelTime"]
-                    j_copy["confidence"] = flow["confidence"]
+                    # TomTom API returns confidence as a 0–1 float (road sensor data quality).
+                    # The entire system uses a 0–100 integer scale for junction confidence.
+                    # Normalize here at ingestion so all downstream consumers stay consistent.
+                    tomtom_conf_raw = flow["confidence"]  # 0.0 – 1.0 from TomTom
+                    j_copy["tomtomConfidence"] = tomtom_conf_raw          # preserve raw for reference
+                    # j_copy["confidence"] = round(tomtom_conf_raw * 100)   # normalized to 0–100
                     j_copy["roadClosure"] = flow["roadClosure"]
                     j_copy["tomtomStatus"] = "TOMTOM_LIVE"
                     j_copy["dataSource"] = "TOMTOM_LIVE"

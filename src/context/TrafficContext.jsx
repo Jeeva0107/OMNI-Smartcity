@@ -63,7 +63,8 @@ export const TrafficProvider = ({ children }) => {
   const [selectedRouteId, setSelectedRouteId]       = useState('ROUTE-B');
   const [selectedCameraId, setSelectedCameraId]     = useState(null);
 
-  // ── Simulation controls ─────────────────────────────────────────────────────
+  // ── Simulation / Demo controls ───────────────────────────────────────────────
+  const [demoMode, setDemoMode]           = useState(false);
   const [isSimulating, setIsSimulating]   = useState(true);
   const [simSpeed, setSimSpeed]           = useState(1);
   const [filterTraffic, setFilterTraffic] = useState('ALL');
@@ -288,18 +289,121 @@ export const TrafficProvider = ({ children }) => {
   }, [isSimulating, simSpeed, wsConnected]);
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // addEvent — optimistic local insert + backend push
+  // addEvent — append a new event to the event log
   // ─────────────────────────────────────────────────────────────────────────────
-  const addEvent = useCallback((evtData) => {
-    const newEvt = {
-      id:     `EVT-${Date.now().toString().slice(-4)}`,
-      time:   new Date().toLocaleTimeString('en-US', { hour12: false }),
-      status: 'ACTIVE',
-      ...evtData,
+  const addEvent = useCallback((eventObj) => {
+    const newEvent = {
+      id: `EVT-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      source: 'SYSTEM',
+      ...eventObj,
     };
-    setEvents(prev => [newEvt, ...prev]);
-    eventService.pushEvent(newEvt).catch(() => {});
+    setEvents(prev => [newEvent, ...prev].slice(0, 200));
+
+    // Also push to backend if online
+    eventService.pushEvent(newEvent).catch(() => {});
   }, []);
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Live countdown ticker for junction remainingTime
+  // ─────────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setJunctions(prev => prev.map(j => {
+        const rem = (j.remainingTime != null ? j.remainingTime : 20) - 1;
+        if (rem <= 0) {
+          const isGreen = j.signal === 'GREEN';
+          const nextSig = isGreen ? 'RED' : 'GREEN';
+          const maxTime = isGreen ? (j.redDuration || 35) : (j.greenDuration || 45);
+          return {
+            ...j,
+            signal: nextSig,
+            remainingTime: maxTime,
+          };
+        }
+        return { ...j, remainingTime: rem };
+      }));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Junction Control Mode & Override Actions
+  // ─────────────────────────────────────────────────────────────────────────────
+  const restoreAIControl = useCallback((junctionId) => {
+    setJunctions(prev => prev.map(j => {
+      if (j.id !== junctionId) return j;
+      return {
+        ...j,
+        controlMode: 'AI_CONTROL',
+        signalReason: 'AI Adaptive Control active. Automatically evaluating traffic flow, queue depths and emergency priority.',
+        greenDuration: 45,
+        redDuration: 35,
+        remainingTime: 30,
+      };
+    }));
+
+    addEvent({
+      category: 'SIGNAL',
+      location: junctionId,
+      title: 'AI Control Restored',
+      description: `Controller restored automated AI adaptive signal control for ${junctionId}.`,
+      severity: 'INFO',
+      source: 'OPERATOR_OVERRIDE',
+      status: 'ACTIVE',
+    });
+  }, [addEvent]);
+
+  const switchFallbackMode = useCallback((junctionId) => {
+    setJunctions(prev => prev.map(j => {
+      if (j.id !== junctionId) return j;
+      return {
+        ...j,
+        controlMode: 'FALLBACK',
+        signalReason: 'Fixed-time fallback active (60s Green / 60s Red cycle). Dynamic AI optimization bypassed.',
+        greenDuration: 60,
+        redDuration: 60,
+        remainingTime: 60,
+      };
+    }));
+
+    addEvent({
+      category: 'SAFETY',
+      location: junctionId,
+      title: 'Fallback Fixed-Time Mode Activated',
+      description: `Junction ${junctionId} switched to safe fixed-time 60s Green / 60s Red cycle.`,
+      severity: 'WARNING',
+      source: 'FALLBACK_SAFETY',
+      status: 'ACTIVE',
+    });
+  }, [addEvent]);
+
+  const overrideAIDecision = useCallback((junctionId, targetSignal = 'GREEN', customGreen = 45, customRed = 40) => {
+    setJunctions(prev => prev.map(j => {
+      if (j.id !== junctionId) return j;
+      return {
+        ...j,
+        controlMode: 'MANUAL',
+        signal: targetSignal,
+        recommendedSignal: targetSignal,
+        greenDuration: customGreen,
+        redDuration: customRed,
+        remainingTime: customGreen,
+        signalReason: `Controller manual override active (Set to ${targetSignal}, Green: ${customGreen}s, Red: ${customRed}s).`,
+      };
+    }));
+
+    addEvent({
+      category: 'SIGNAL',
+      location: junctionId,
+      title: `Controller Manual Override Applied (${targetSignal})`,
+      description: `Controller manually set ${junctionId} signal state to ${targetSignal} (${customGreen}s Green / ${customRed}s Red).`,
+      severity: 'WARNING',
+      source: 'MANUAL_OVERRIDE',
+      status: 'OVERRIDDEN',
+    });
+  }, [addEvent]);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Signal transition
@@ -461,6 +565,9 @@ export const TrafficProvider = ({ children }) => {
 
       // Actions
       transitionSignal,
+      restoreAIControl,
+      switchFallbackMode,
+      overrideAIDecision,
       advanceAmbulanceStep,
       pauseAmbulance,
       resetAmbulance,
@@ -468,7 +575,9 @@ export const TrafficProvider = ({ children }) => {
       triggerCongestion,
       toggleCorridorApproval,
 
-      // Simulation
+      // Simulation / Demo Mode
+      demoMode,
+      setDemoMode,
       isSimulating,
       setIsSimulating,
       simSpeed,

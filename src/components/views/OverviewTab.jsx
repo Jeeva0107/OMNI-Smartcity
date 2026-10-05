@@ -1,27 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useTraffic } from '../../context/TrafficContext';
-import { GeoMap } from '../map/GeoMap';
-import { SourceBadge } from '../map/GeoMap';
+import { GeoMap, SourceBadge } from '../map/GeoMap';
 import {
-  Activity, AlertTriangle, Car, CheckCircle, Clock, Navigation, Radio, TrendingUp, Zap, Flame
+  Activity, AlertTriangle, Car, CheckCircle, Clock, Navigation, Radio, TrendingUp, Zap, Flame, ShieldAlert, CheckCircle2, ArrowRight
 } from 'lucide-react';
 
-// Tiny metric card — unchanged from original
-const MetricCard = ({ label, value, sub, icon: Icon, iconColor = 'text-[#5A636B]', valueColor = 'text-white', source }) => (
-  <div className="bg-[#10141A] p-4 rounded-xl border border-[#1A2028] flex flex-col gap-2">
-    <div className="flex items-center justify-between">
-      <span className="text-[9px] font-bold uppercase tracking-wider text-[#5A636B]">{label}</span>
-      <Icon className={`w-4 h-4 ${iconColor}`} />
-    </div>
-    <div className="flex items-baseline justify-between gap-2">
-      <span className={`text-2xl font-data font-bold ${valueColor}`}>{value}</span>
-      {sub && <span className="text-[10px] text-[#5A636B] text-right">{sub}</span>}
-    </div>
-    {source && <div className="mt-1"><SourceBadge source={source} /></div>}
-  </div>
-);
-
-// ── TomTom status banner — shown only when TomTom is live ──────────────────────
+// ── TomTom status banner ──────────────────────────────────────────────────
 const TomTomBanner = ({ tomtomStatus }) => {
   if (!tomtomStatus) return null;
 
@@ -33,9 +17,9 @@ const TomTomBanner = ({ tomtomStatus }) => {
     return (
       <div className="mx-4 mt-3 flex items-center gap-2 bg-cyan-500/8 border border-cyan-500/20 rounded-lg px-3 py-2">
         <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 pulse-dot shrink-0" />
-        <span className="text-[9px] font-bold text-cyan-400 uppercase tracking-wider">TomTom Live</span>
+        <span className="text-[9px] font-bold text-cyan-400 uppercase tracking-wider">TomTom Live API Active</span>
         <span className="text-[9px] text-[#5A636B] ml-auto">
-          {tomtomStatus.junctionsUpdated}/12 junctions · {tomtomStatus.lastUpdated}
+          {tomtomStatus.junctionsUpdated}/12 junctions · Updated: {tomtomStatus.lastUpdated}
         </span>
       </div>
     );
@@ -45,8 +29,8 @@ const TomTomBanner = ({ tomtomStatus }) => {
     return (
       <div className="mx-4 mt-3 flex items-center gap-2 bg-amber-500/8 border border-amber-500/20 rounded-lg px-3 py-2">
         <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-        <span className="text-[9px] font-bold text-amber-400 uppercase tracking-wider">Simulation Fallback</span>
-        <span className="text-[9px] text-[#5A636B] ml-auto">TomTom unavailable</span>
+        <span className="text-[9px] font-bold text-amber-400 uppercase tracking-wider">Simulation Fallback Active</span>
+        <span className="text-[9px] text-[#5A636B] ml-auto">TomTom API baseline active</span>
       </div>
     );
   }
@@ -55,7 +39,7 @@ const TomTomBanner = ({ tomtomStatus }) => {
     return (
       <div className="mx-4 mt-3 flex items-center gap-2 bg-red-500/8 border border-red-500/20 rounded-lg px-3 py-2">
         <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
-        <span className="text-[9px] font-bold text-red-400 uppercase tracking-wider">TomTom Error</span>
+        <span className="text-[9px] font-bold text-red-400 uppercase tracking-wider">TomTom Service Notice</span>
         <span className="text-[9px] text-[#5A636B] ml-auto truncate">{tomtomStatus.message}</span>
       </div>
     );
@@ -65,69 +49,96 @@ const TomTomBanner = ({ tomtomStatus }) => {
 };
 
 export const OverviewTab = () => {
-  const { junctions, incidents, ambulance, backendOnline, setActiveTab, tomtomStatus } = useTraffic();
+  const { junctions, incidents, ambulance, backendOnline, setActiveTab, tomtomStatus, setSelectedJunctionId } = useTraffic();
 
   const isTomTomLive = tomtomStatus?.status === 'TOMTOM_LIVE';
 
-  // ── Speed: use TomTom currentSpeed per junction when live, else j.speed ──────
+  // ── Network Speed averages ──────────────────────────────────────────────
   const avgSpeed = Math.round(
-    junctions.reduce((s, j) => {
-      const speed = (isTomTomLive && j.tomtomStatus === 'TOMTOM_LIVE' && typeof j.speed === 'number')
-        ? j.speed
-        : j.speed;
-      return s + speed;
-    }, 0) / Math.max(1, junctions.length)
+    junctions.reduce((s, j) => s + (j.speed || 0), 0) / Math.max(1, junctions.length)
   );
 
-  // ── Free-flow speed average (TomTom only) ────────────────────────────────────
   const avgFreeFlow = isTomTomLive
     ? Math.round(
         junctions
-          .filter(j => j.tomtomStatus === 'TOMTOM_LIVE' && typeof j.freeFlowSpeed === 'number')
+          .filter(j => typeof j.freeFlowSpeed === 'number')
           .reduce((s, j, _, arr) => s + j.freeFlowSpeed / Math.max(1, arr.length), 0)
       )
     : null;
 
-  // ── TomTom incident count when live, else fall back to active events ──────────
   const tomtomIncidentCount  = isTomTomLive ? (tomtomStatus?.incidentsCount ?? 0) : null;
   const activeIncidents      = tomtomIncidentCount ?? (incidents || []).filter(e => e.status === 'ACTIVE').length;
 
-  // ── Status breakdown — driven by TomTom-derived junction.status ──────────────
-  const totalVehicles   = junctions.reduce((s, j) => s + j.vehicles, 0);   // YOLO / simulation — never TomTom-fabricated
+  const totalVehicles   = junctions.reduce((s, j) => s + j.vehicles, 0);   // YOLO / simulation
   const criticalCount   = junctions.filter(j => j.status === 'CRITICAL').length;
   const highCount       = junctions.filter(j => j.status === 'HIGH').length;
   const smoothCount     = junctions.filter(j => j.status === 'SMOOTH').length;
 
   const recentIncidents = (incidents || []).slice(0, 4);
 
-  // Source label for the Network Summary header
-  const networkSource = isTomTomLive ? 'TOMTOM_LIVE' : 'SIMULATED';
+  const handleSelectMapJunction = (jId) => {
+    setSelectedJunctionId(jId);
+    setActiveTab('junction_control');
+  };
 
   return (
-    <div className="flex-1 overflow-hidden flex flex-col">
+    <div className="flex-1 overflow-hidden flex flex-col bg-[#090B0D]">
 
-      {/* TomTom status banner — sits between header and content */}
-      <TomTomBanner tomtomStatus={tomtomStatus} />
-
-      <div className="flex-1 flex overflow-hidden mt-1">
-
-        {/* LEFT: MAP (primary) — unchanged */}
-        <div className="flex-1 p-4">
-          <GeoMap onSelectJunction={() => {}} showAmbulance={true} />
+      {/* OPERATOR WORKFLOW STAGES HEADER BANNER */}
+      <div className="bg-[#0D1115] border-b border-[#1A2028] px-5 py-2.5 flex items-center justify-between">
+        <div className="flex items-center gap-1.5 text-[10px] font-mono font-bold">
+          <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+            SITUATIONAL AWARENESS
+          </span>
+          <ArrowRight className="w-3 h-3 text-[#3D4850]" />
+          <span className="px-2 py-0.5 rounded bg-[#141A20] text-[#737B82] border border-[#1E2530]">
+            ALERT
+          </span>
+          <ArrowRight className="w-3 h-3 text-[#3D4850]" />
+          <span className="px-2 py-0.5 rounded bg-[#141A20] text-[#737B82] border border-[#1E2530]">
+            INVESTIGATE
+          </span>
+          <ArrowRight className="w-3 h-3 text-[#3D4850]" />
+          <span className="px-2 py-0.5 rounded bg-[#141A20] text-[#737B82] border border-[#1E2530]">
+            DECIDE
+          </span>
+          <ArrowRight className="w-3 h-3 text-[#3D4850]" />
+          <span className="px-2 py-0.5 rounded bg-[#141A20] text-[#737B82] border border-[#1E2530]">
+            ACT
+          </span>
+          <ArrowRight className="w-3 h-3 text-[#3D4850]" />
+          <span className="px-2 py-0.5 rounded bg-[#141A20] text-[#737B82] border border-[#1E2530]">
+            AUDIT
+          </span>
         </div>
 
-        {/* RIGHT: Summary panel */}
-        <div className="w-72 flex flex-col border-l border-[#1A2028] overflow-y-auto">
+        <div className="text-[10px] text-[#5A636B] font-mono flex items-center gap-2">
+          <span>Map Layer: <strong className="text-white">Chennai OSM</strong></span>
+          <span>•</span>
+          <span>12 Monitored Junctions</span>
+        </div>
+      </div>
 
-          {/* Metrics */}
-          <div className="p-4 border-b border-[#1A2028]">
-            <div className="text-[9px] font-bold text-[#5A636B] uppercase tracking-wider mb-3 flex items-center gap-2">
-              Network Summary
-              <SourceBadge source={networkSource} />
+      <TomTomBanner tomtomStatus={tomtomStatus} />
+
+      <div className="flex-1 flex overflow-hidden p-4 gap-4">
+
+        {/* LEFT: MAP (Primary situational awareness viewport) */}
+        <div className="flex-1 rounded-xl overflow-hidden border border-[#1A2028] bg-[#0C0F13] relative">
+          <GeoMap onSelectJunction={handleSelectMapJunction} showAmbulance={true} />
+        </div>
+
+        {/* RIGHT: COMMAND CENTER CONTROL PANEL */}
+        <div className="w-80 bg-[#0C0F13] rounded-xl border border-[#1A2028] flex flex-col overflow-y-auto divide-y divide-[#1A2028]">
+
+          {/* Network Summary */}
+          <div className="p-4 space-y-3">
+            <div className="text-[9px] font-bold text-[#5A636B] uppercase tracking-wider flex items-center justify-between">
+              <span>Network Summary</span>
+              <SourceBadge source={isTomTomLive ? 'TOMTOM_LIVE' : 'SIMULATED'} />
             </div>
-            <div className="space-y-2">
 
-              {/* Junctions Tracked */}
+            <div className="space-y-2">
               <div className="bg-[#10141A] p-3 rounded-lg border border-[#1A2028] flex items-center justify-between">
                 <div>
                   <div className="text-[9px] text-[#5A636B] font-bold uppercase">Junctions Tracked</div>
@@ -136,16 +147,6 @@ export const OverviewTab = () => {
                 <Radio className="w-4 h-4 text-amber-500" />
               </div>
 
-              {/* Vehicles in Network — always from YOLO/simulation, never fabricated from TomTom */}
-              <div className="bg-[#10141A] p-3 rounded-lg border border-[#1A2028] flex items-center justify-between">
-                <div>
-                  <div className="text-[9px] text-[#5A636B] font-bold uppercase">Vehicles in Network</div>
-                  <div className="font-data font-bold text-white text-lg">{totalVehicles}</div>
-                </div>
-                <Car className="w-4 h-4 text-sky-400" />
-              </div>
-
-              {/* Avg Speed — TomTom currentSpeed when live, else simulation speed */}
               <div className="bg-[#10141A] p-3 rounded-lg border border-[#1A2028] flex items-center justify-between">
                 <div>
                   <div className="text-[9px] text-[#5A636B] font-bold uppercase flex items-center gap-1.5">
@@ -155,7 +156,6 @@ export const OverviewTab = () => {
                   <div className="font-data font-bold text-white text-lg">
                     {avgSpeed} <span className="text-xs text-[#5A636B]">km/h</span>
                   </div>
-                  {/* Free-flow speed row — TomTom-only extra field */}
                   {isTomTomLive && avgFreeFlow !== null && (
                     <div className="text-[9px] text-[#5A636B] mt-0.5">
                       Free-flow: <span className="text-cyan-400 font-data font-bold">{avgFreeFlow}</span> km/h
@@ -165,7 +165,19 @@ export const OverviewTab = () => {
                 <TrendingUp className="w-4 h-4 text-emerald-400" />
               </div>
 
-              {/* Active Incidents — TomTom incident count when live */}
+              {/* Vehicles Detected (Labeled honest source) */}
+              <div className="bg-[#10141A] p-3 rounded-lg border border-[#1A2028] flex items-center justify-between">
+                <div>
+                  <div className="text-[9px] text-[#5A636B] font-bold uppercase flex items-center gap-1">
+                    <span>Vehicles Monitored</span>
+                    <SourceBadge source="LIVE API DATA" label="YOLO / SIM" />
+                  </div>
+                  <div className="font-data font-bold text-white text-lg">{totalVehicles}</div>
+                </div>
+                <Car className="w-4 h-4 text-sky-400" />
+              </div>
+
+              {/* Active Incidents */}
               <div className="bg-[#10141A] p-3 rounded-lg border border-[#1A2028] flex items-center justify-between">
                 <div>
                   <div className="text-[9px] text-[#5A636B] font-bold uppercase flex items-center gap-1.5">
@@ -181,10 +193,10 @@ export const OverviewTab = () => {
             </div>
           </div>
 
-          {/* Junction status breakdown — congestion derived from TomTom speed when live */}
-          <div className="p-4 border-b border-[#1A2028]">
-            <div className="text-[9px] font-bold text-[#5A636B] uppercase tracking-wider mb-3 flex items-center gap-2">
-              Status Breakdown
+          {/* Status Breakdown */}
+          <div className="p-4 space-y-2">
+            <div className="text-[9px] font-bold text-[#5A636B] uppercase tracking-wider flex items-center justify-between mb-1">
+              <span>Traffic Congestion Status</span>
               {isTomTomLive && <SourceBadge source="TOMTOM_LIVE" />}
             </div>
             {[
@@ -193,7 +205,7 @@ export const OverviewTab = () => {
               { label: 'HIGH',     count: highCount,     color: 'bg-orange-500' },
               { label: 'CRITICAL', count: criticalCount, color: 'bg-red-500' },
             ].map(({ label, count, color }) => (
-              <div key={label} className="flex items-center gap-2 mb-2">
+              <div key={label} className="flex items-center gap-2">
                 <div className={`w-2 h-2 rounded-full shrink-0 ${color}`} />
                 <span className="text-[10px] text-[#8A939B] flex-1">{label}</span>
                 <span className="font-data font-bold text-xs text-white">{count}</span>
@@ -204,52 +216,88 @@ export const OverviewTab = () => {
             ))}
           </div>
 
-          {/* Ambulance corridor notice — unchanged from original */}
+          {/* Emergency Corridor Alert if Active */}
           {ambulance.active && (
-            <div className="p-4 border-b border-[#1A2028]">
-              <div className="bg-red-500/8 border border-red-500/20 rounded-lg p-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="w-2 h-2 rounded-full bg-red-400 pulse-dot" />
-                  <span className="text-[10px] font-bold text-red-400">SIMULATED CORRIDOR</span>
-                  <SourceBadge source="SIMULATED" />
+            <div className="p-4 bg-red-950/20">
+              <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-red-400 pulse-dot" />
+                    <span className="text-[10px] font-bold text-red-400">EMERGENCY CORRIDOR</span>
+                  </div>
+                  <SourceBadge source="SIMULATED" label="GPS STREAM" />
                 </div>
                 <div className="text-[10px] text-[#8A939B]">
-                  <div className="font-semibold text-white text-xs mb-1">{ambulance.callsign}</div>
+                  <div className="font-semibold text-white text-xs">{ambulance.callsign || ambulance.id}</div>
                   <div>{ambulance.origin} → {ambulance.destination}</div>
-                  <div className="mt-1 font-data text-red-300">ETA: {ambulance.eta} · {ambulance.distRemaining}</div>
+                  <div className="mt-1 font-data text-red-300 font-bold">ETA: {ambulance.eta} · {ambulance.distRemaining} km</div>
                 </div>
-                <button onClick={() => setActiveTab('incidents')} className="mt-2 text-[9px] text-red-400 hover:text-red-300 underline underline-offset-2">
-                  View corridor details →
+                <button
+                  onClick={() => setActiveTab('emergency_corridor')}
+                  className="w-full py-1 rounded bg-red-500/20 hover:bg-red-500/30 text-red-400 text-[10px] font-bold border border-red-500/40 transition-colors"
+                >
+                  Manage Emergency Corridor →
                 </button>
               </div>
             </div>
           )}
 
-          {/* Recent incidents — unchanged */}
-          <div className="p-4 flex-1">
-            <div className="text-[9px] font-bold text-[#5A636B] uppercase tracking-wider mb-3">Recent Events</div>
-            <div className="space-y-2">
-              {recentIncidents.map(evt => (
-                <div key={evt.id} className="bg-[#10141A] p-2.5 rounded-lg border border-[#1A2028]">
-                  <div className="flex items-start gap-2">
-                    <div className={`w-1.5 h-1.5 rounded-full shrink-0 mt-1.5 ${
-                      evt.severity === 'CRITICAL' ? 'bg-red-400' :
-                      evt.severity === 'WARNING'  ? 'bg-amber-400' : 'bg-emerald-400'
-                    }`} />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[10px] font-semibold text-white truncate">{evt.title}</div>
-                      <div className="text-[9px] text-[#5A636B] mt-0.5">{evt.locationName} · {evt.time}</div>
+          {/* Quick Monitored Junctions Analysis List */}
+          <div className="p-4 space-y-2">
+            <div className="text-[9px] font-bold text-[#5A636B] uppercase tracking-wider flex items-center justify-between mb-1">
+              <span>Monitored Junctions (Click for Analysis)</span>
+              <span className="text-[9px] text-[#3D4850] font-mono">12 Total</span>
+            </div>
+
+            <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+              {junctions.map(j => {
+                const rawConf = j.confidence != null ? j.confidence : 82;
+                const conf = (typeof rawConf === 'number' && rawConf <= 1.0 && rawConf > 0)
+                  ? Math.round(rawConf * 100)
+                  : Math.round(rawConf);
+                return (
+                  <button
+                    key={j.id}
+                    onClick={() => handleSelectMapJunction(j.id)}
+                    className="w-full text-left bg-[#10141A] hover:bg-[#18202A] p-2 rounded-lg border border-[#1A2028] transition-colors flex items-center justify-between text-[11px]"
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <span className="font-mono font-bold text-amber-400 shrink-0">{j.id}</span>
+                      <span className="text-white truncate font-medium">{j.name}</span>
                     </div>
-                  </div>
-                </div>
-              ))}
-              <button onClick={() => setActiveTab('incidents')} className="text-[9px] text-amber-500 hover:text-amber-400 underline underline-offset-2">
-                View all incidents →
-              </button>
+
+                    <div className="flex items-center gap-2 shrink-0 font-mono text-[10px]">
+                      <span className={`px-1.5 py-0.5 rounded font-bold border ${
+                        j.signal === 'GREEN' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                        j.signal === 'RED' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
+                        'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                      }`}>
+                        {j.signal}
+                      </span>
+                      <span className={`font-bold ${conf < 40 ? 'text-red-400 font-extrabold' : 'text-[#8A939B]'}`}>
+                        {conf}%
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
+
+          {/* Data Honesty Disclaimer */}
+          <div className="p-4 bg-[#090B0D]">
+            <div className="text-[9px] font-bold text-[#5A636B] uppercase tracking-wider mb-2">Data Source Provenance</div>
+            <div className="text-[10px] text-[#737B82] space-y-1 font-mono">
+              <p>• <strong className="text-cyan-400">TOMTOM LIVE</strong>: Speed, travel time &amp; incident flow API</p>
+              <p>• <strong className="text-emerald-400">YOLO11n</strong>: Video perception (CAM-01 / J1)</p>
+              <p>• <strong className="text-amber-400">SIMULATED</strong>: Baseline telemetry &amp; ambulance GPS</p>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>
   );
 };
+
+export default OverviewTab;

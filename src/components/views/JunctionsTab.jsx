@@ -19,7 +19,7 @@ const STATUS_ROW = {
 };
 
 export const JunctionsTab = () => {
-  const { junctions, transitionSignal } = useTraffic();
+  const { junctions, transitionSignal, setSelectedJunctionId, setActiveTab } = useTraffic();
   const [selectedJunction, setSelectedJunction] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [pendingSignal, setPendingSignal] = useState({});
@@ -33,6 +33,11 @@ export const JunctionsTab = () => {
     setPendingSignal(prev => ({ ...prev, [junctionId]: true }));
     transitionSignal(junctionId, signal);
     setTimeout(() => setPendingSignal(prev => ({ ...prev, [junctionId]: false })), 3500);
+  };
+
+  const handleOpenAnalysisPage = (junctionId) => {
+    setSelectedJunctionId(junctionId);
+    setActiveTab('junction_control');
   };
 
   return (
@@ -94,6 +99,14 @@ export const JunctionsTab = () => {
                   {selectedJunction.lat.toFixed(6)}°N, {selectedJunction.lng.toFixed(6)}°E · WGS-84
                 </p>
               </div>
+
+              <button
+                onClick={() => handleOpenAnalysisPage(selectedJunction.id)}
+                className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-mono font-extrabold text-xs transition-all shadow-glow flex items-center gap-1.5"
+              >
+                <span>Full Junction Analysis Page</span>
+                <span>→</span>
+              </button>
             </div>
 
             {/* Traffic metrics */}

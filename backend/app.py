@@ -12,6 +12,7 @@ from flask_sock import Sock
 from config import Config
 from services.state_manager import state_manager
 from services.tomtom_traffic import tomtom_service
+from services.socket_service import init_socketio, socketio
 
 # ── Blueprint imports ─────────────────────────────────────────────────────────
 from routes.junction_routes import junctions_bp
@@ -30,7 +31,10 @@ def create_app() -> Flask:
     # ── CORS ─────────────────────────────────────────────────────────────────
     CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=False)
 
-    # ── WebSockets ───────────────────────────────────────────────────────────
+    # ── Socket.IO (for Ambulance App) ─────────────────────────────────────────
+    init_socketio(app)
+
+    # ── WebSockets (for Control Room Website) ──────────────────────────────────
     sock = Sock(app)
 
     @sock.route("/ws/live")
@@ -96,7 +100,8 @@ def create_app() -> Flask:
             "status": "ok",
             "service": "omni-smartcity-api",
             "centralState": "ACTIVE",
-            "websocketEndpoint": "/ws/live"
+            "websocketEndpoint": "/ws/live",
+            "socketIoEndpoint": "http://0.0.0.0:5000"
         })
 
     # ── 404 / 405 JSON handlers ───────────────────────────────────────────────
@@ -119,15 +124,18 @@ if __name__ == "__main__":
     app = create_app()
     print("=" * 55)
     print("  OMNI SMARTCITY  Backend API & Central Live State")
-    print(f"  Running on  http://localhost:{Config.PORT}")
+    print(f"  Running on  http://0.0.0.0:{Config.PORT}")
     print(f"  WebSocket:   ws://localhost:{Config.PORT}/ws/live")
+    print(f"  Socket.IO:   http://localhost:{Config.PORT}")
     print(f"  CORS origins: {Config.CORS_ORIGINS}")
     print(f"  YOLO real:    {Config.USE_REAL_YOLO}")
     print(f"  GPS real:     {Config.USE_REAL_GPS}")
     print("=" * 55)
-    app.run(
+    socketio.run(
+        app,
         host=Config.HOST,
         port=Config.PORT,
         debug=Config.DEBUG,
-        threaded=True,
+        allow_unsafe_werkzeug=True,
     )
+

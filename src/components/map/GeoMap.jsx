@@ -6,11 +6,21 @@ import { useTraffic } from '../../context/TrafficContext';
 import { ROAD_CONNECTIONS } from '../../data/mockData';
 
 // ── Source Badge component ────────────────────────────────────────────────────
-export const SourceBadge = ({ source }) => {
-  if (source === 'TOMTOM_LIVE')  return <span className="badge-tomtom">▲ TOMTOM LIVE</span>;
-  if (source === 'LIVE API DATA') return <span className="badge-live">● LIVE API</span>;
-  if (source === 'SIMULATED')     return <span className="badge-sim">◎ SIMULATED</span>;
-  return <span className="badge-static">— STATIC</span>;
+export const SourceBadge = ({ source, type, label }) => {
+  const s = (source || type || label || '').toUpperCase();
+  if (s.includes('TOMTOM') || s === 'LIVE') {
+    return <span className="px-1.5 py-0.5 rounded text-[8px] font-mono font-extrabold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">▲ TOMTOM LIVE</span>;
+  }
+  if (s.includes('YOLO')) {
+    return <span className="px-1.5 py-0.5 rounded text-[8px] font-mono font-extrabold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">● YOLO11n VIDEO INPUT</span>;
+  }
+  if (s.includes('DERIVED')) {
+    return <span className="px-1.5 py-0.5 rounded text-[8px] font-mono font-extrabold bg-purple-500/15 text-purple-300 border border-purple-500/30">◇ DERIVED</span>;
+  }
+  if (s.includes('UNAVAIL')) {
+    return <span className="px-1.5 py-0.5 rounded text-[8px] font-mono font-extrabold bg-red-500/15 text-red-400 border border-red-500/30">✕ UNAVAILABLE</span>;
+  }
+  return <span className="px-1.5 py-0.5 rounded text-[8px] font-mono font-extrabold bg-amber-500/15 text-amber-400 border border-amber-500/30">◎ SIMULATION FALLBACK</span>;
 };
 
 // ── Status colours ────────────────────────────────────────────────────────────

@@ -1,15 +1,33 @@
 import React, { useState } from 'react';
 import { useTraffic } from '../../context/TrafficContext';
 import { SourceBadge } from '../map/GeoMap';
-import { Activity, Clock, Filter, AlertTriangle, CheckCircle, ShieldAlert } from 'lucide-react';
+import { Activity, Clock, Filter, AlertTriangle, CheckCircle, ShieldAlert, UserCheck, Radio, Cpu, RefreshCw } from 'lucide-react';
 
 export const ActivityEventsTab = () => {
   const { events, ambulance } = useTraffic();
   const [filterCategory, setFilterCategory] = useState('ALL');
 
-  const filteredEvents = events.filter(e => {
+  const categories = [
+    { id: 'ALL', label: 'ALL EVENTS' },
+    { id: 'ALERTS', label: 'ALERTS' },
+    { id: 'AI_RECOMMENDATION', label: 'AI RECOM.' },
+    { id: 'LOW_CONFIDENCE', label: 'LOW CONFIDENCE' },
+    { id: 'OPERATOR_OVERRIDE', label: 'OPERATOR OVERRIDE' },
+    { id: 'EMERGENCY', label: 'EMERGENCY' },
+    { id: 'ROUTE_CHANGE', label: 'ROUTE CHANGE' },
+    { id: 'SYSTEM_FAILURE', label: 'SYSTEM / DATA' },
+  ];
+
+  const filteredEvents = (events || []).filter(e => {
     if (filterCategory === 'ALL') return true;
-    return e.category === filterCategory;
+    if (filterCategory === 'ALERTS') return e.severity === 'WARNING' || e.severity === 'CRITICAL';
+    if (filterCategory === 'AI_RECOMMENDATION') return e.category === 'SIGNAL' || e.source === 'OPERATOR_DECISION_SUPPORT';
+    if (filterCategory === 'LOW_CONFIDENCE') return e.title?.toLowerCase().includes('confidence') || e.category === 'LOW_CONFIDENCE';
+    if (filterCategory === 'OPERATOR_OVERRIDE') return e.source === 'MANUAL_OVERRIDE' || e.category === 'OVERRIDE';
+    if (filterCategory === 'EMERGENCY') return e.category === 'EMERGENCY';
+    if (filterCategory === 'ROUTE_CHANGE') return e.category === 'ROUTE';
+    if (filterCategory === 'SYSTEM_FAILURE') return e.category === 'SYSTEM';
+    return true;
   });
 
   return (
@@ -18,117 +36,118 @@ export const ActivityEventsTab = () => {
       <div className="bg-[#14181C] p-4 rounded-xl border border-[#242A30] flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center">
-            <AlertTriangle className="w-5 h-5 text-amber-400" />
+            <Activity className="w-5 h-5 text-amber-400" />
           </div>
           <div>
             <h3 className="text-xs font-bold text-white uppercase tracking-wider">
-              Traffic Incidents & Control Events Log
+              Control Room Audit Trail &amp; Event Stream
             </h3>
             <p className="text-[11px] text-[#737B82]">
-              Real-time audit log of congestion warnings, emergency dispatches, and manual signal overrides
+              Chronological log of alerts, AI recommendations, low-confidence decisions, operator overrides &amp; data source events
             </p>
           </div>
         </div>
 
-        <SourceBadge type="SIMULATED" label="SIMULATED & SYSTEM EVENTS" />
+        <div className="flex items-center gap-2 text-xs font-mono">
+          <span className="px-3 py-1 rounded bg-[#181D21] border border-[#242A30] text-[#B8BEC4]">
+            TOTAL AUDITED: <strong className="text-amber-400">{events?.length || 0}</strong>
+          </span>
+        </div>
       </div>
 
-      {/* EMERGENCY AMBULANCE BANNER (IF ACTIVE) */}
+      {/* EMERGENCY DISPATCH BANNER IF ACTIVE */}
       {ambulance.active && (
         <div className="bg-red-500/10 border border-red-500/30 p-4 rounded-xl flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded bg-red-500/20 text-red-400 flex items-center justify-center font-bold">
+            <div className="w-8 h-8 rounded bg-red-500/20 text-red-400 flex items-center justify-center font-bold font-mono">
               AMB
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-white">Emergency Dispatch: AMB-102</span>
-                <SourceBadge type="SIMULATED" label="SIMULATED AMBULANCE GPS" />
+                <span className="text-xs font-bold text-white">Active Emergency Dispatch: {ambulance.callsign || 'AMB-102'}</span>
+                <SourceBadge source="SIMULATED" label="GPS STREAM" />
               </div>
-              <p className="text-[11px] text-[#B8BEC4] mt-0.5">
-                Route: {ambulance.origin} → {ambulance.destination} (ETA: {ambulance.eta})
+              <p className="text-[11px] text-[#B8BEC4] mt-0.5 font-mono">
+                {ambulance.origin} → {ambulance.destination} (ETA: {ambulance.eta})
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="px-2.5 py-1 rounded bg-red-500/20 text-red-400 text-xs font-mono font-bold border border-red-500/30">
-              CORRIDOR {ambulance.corridorApproved ? 'APPROVED' : 'PENDING'}
-            </span>
-          </div>
+          <span className="px-2.5 py-1 rounded bg-red-500/20 text-red-400 text-xs font-mono font-bold border border-red-500/30">
+            CORRIDOR {ambulance.corridorApproved ? 'APPROVED' : 'PENDING'}
+          </span>
         </div>
       )}
 
       {/* FILTER BAR */}
       <div className="bg-[#14181C] p-4 rounded-xl border border-[#242A30] flex items-center justify-between">
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#181D21] border border-[#242A30] text-xs font-semibold text-white">
-            <Filter className="w-4 h-4 text-amber-400" />
-            <span>Filter:</span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#181D21] border border-[#242A30] text-xs font-semibold text-white">
+            <Filter className="w-3.5 h-3.5 text-amber-400" />
+            <span>Filter Category:</span>
           </div>
-          {['ALL', 'TRAFFIC', 'SIGNAL', 'EMERGENCY', 'SYSTEM'].map((cat) => (
+          {categories.map((cat) => (
             <button
-              key={cat}
-              onClick={() => setFilterCategory(cat)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                filterCategory === cat
-                  ? 'bg-amber-500 text-black border-amber-500'
+              key={cat.id}
+              onClick={() => setFilterCategory(cat.id)}
+              className={`px-3 py-1.5 rounded-lg text-[10px] font-mono font-bold border transition-all ${
+                filterCategory === cat.id
+                  ? 'bg-amber-500 text-black border-amber-500 shadow-glow'
                   : 'bg-[#181D21] text-[#737B82] border-[#242A30] hover:text-white'
               }`}
             >
-              {cat}
+              {cat.label}
             </button>
           ))}
         </div>
-
-        <div className="text-xs text-[#737B82] font-mono">
-          Total Recorded: <strong className="text-white">{filteredEvents.length}</strong>
-        </div>
       </div>
 
-      {/* EVENTS TIMELINE LIST */}
-      <div className="bg-[#14181C] p-6 rounded-xl border border-[#242A30] space-y-4">
+      {/* EVENTS TIMELINE STREAM */}
+      <div className="bg-[#14181C] p-5 rounded-xl border border-[#242A30] space-y-4">
         <div className="flex items-center justify-between border-b border-[#242A30] pb-3">
           <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
             <Activity className="w-4 h-4 text-amber-400" />
-            Control Center Audit Log
+            Audited Event Log Stream
           </h3>
-          <SourceBadge type="SIMULATED" label="SIMULATED TELEMETRY LOG" />
+          <span className="text-[10px] text-[#5A636B] font-mono">Sorted by latest timestamp</span>
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-2.5">
           {filteredEvents.map((evt) => {
-            let categoryColor = 'bg-blue-500/20 text-blue-400 border-blue-500/30';
-            if (evt.category === 'EMERGENCY') categoryColor = 'bg-red-500/20 text-red-400 border-red-500/40';
-            else if (evt.category === 'SIGNAL') categoryColor = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
-            else if (evt.category === 'TRAFFIC') categoryColor = 'bg-amber-500/20 text-amber-400 border-amber-500/30';
+            let catBadgeClass = 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30';
+            if (evt.category === 'EMERGENCY') catBadgeClass = 'bg-red-500/15 text-red-400 border-red-500/40';
+            else if (evt.category === 'SIGNAL') catBadgeClass = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
+            else if (evt.severity === 'WARNING' || evt.severity === 'CRITICAL') catBadgeClass = 'bg-amber-500/15 text-amber-400 border-amber-500/30';
+
+            const evtSource = evt.source || (evt.category === 'EMERGENCY' ? 'SIMULATED' : 'TOMTOM_LIVE');
 
             return (
               <div
                 key={evt.id}
-                className="p-4 rounded-xl bg-[#181D21] border border-[#242A30] hover:border-[#2A323A] transition-all flex items-start justify-between gap-4"
+                className="p-3.5 rounded-xl bg-[#181D21] border border-[#242A30] hover:border-[#2E3640] transition-all flex items-start justify-between gap-4"
               >
-                <div className="flex items-start gap-4">
+                <div className="flex items-start gap-3.5">
                   <div className="font-mono text-xs font-bold text-amber-400 bg-[#0E1114] px-2.5 py-1 rounded border border-[#242A30] flex items-center gap-1.5 shrink-0">
-                    <Clock className="w-3.5 h-3.5" />
+                    <Clock className="w-3.5 h-3.5 text-[#5A636B]" />
                     {evt.time}
                   </div>
 
                   <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${categoryColor}`}>
-                        {evt.category}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold border ${catBadgeClass}`}>
+                        {evt.category || 'EVENT'}
                       </span>
-                      <span className="text-xs font-bold text-[#737B82]">Location: {evt.location}</span>
+                      <span className="text-xs font-bold text-[#737B82]">Junction / Event: <strong className="text-white">{evt.location || evt.locationName || 'N/A'}</strong></span>
+                      <SourceBadge source={evtSource} />
                     </div>
-                    <h4 className="text-sm font-bold text-white">{evt.title}</h4>
-                    <p className="text-xs text-[#B8BEC4]">{evt.description}</p>
+                    <h4 className="text-xs font-bold text-white">{evt.title}</h4>
+                    <p className="text-[11px] text-[#8A939B]">{evt.description}</p>
                   </div>
                 </div>
 
                 <div className="text-right shrink-0">
-                  <span className="font-mono text-[10px] text-[#737B82]">{evt.id}</span>
-                  <div className="text-[10px] font-bold text-emerald-400 mt-1">{evt.status}</div>
+                  <span className="font-mono text-[9px] text-[#5A636B]">{evt.id}</span>
+                  <div className="text-[10px] font-mono font-bold text-emerald-400 mt-1">{evt.status || 'LOGGED'}</div>
                 </div>
               </div>
             );
@@ -138,3 +157,5 @@ export const ActivityEventsTab = () => {
     </div>
   );
 };
+
+export default ActivityEventsTab;

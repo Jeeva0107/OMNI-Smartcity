@@ -18,12 +18,36 @@ def _derive_status(vehicles: int) -> str:
     return "SMOOTH"
 
 
-def _derive_recommendation(j: dict) -> str:
-    if j["status"] == "CRITICAL" and j["signal"] == "RED":
-        return "GREEN"
-    if j["status"] == "SMOOTH" and j["queue"] < 5:
-        return j["signal"]          # keep as-is
-    return "GREEN" if j["vehicles"] > 30 else j["signal"]
+def _derive_recommendation(j: dict) -> tuple[str, str]:
+    """
+    Derive dynamic AI signal recommendation and rationale based on junction telemetry.
+    Returns (recommendedSignal, recommendedReason).
+    """
+    sig = j.get("signal", "RED")
+    status = j.get("status", "SMOOTH")
+    queue = j.get("queue", 0)
+
+    if sig == "YELLOW":
+        return "ALL_RED", "Clearance yellow active. AI recommends ALL_RED safety interval before cross-street green."
+
+    if sig == "ALL_RED":
+        return "GREEN", "All-red clearance interval complete. AI recommends initiating green phase for highest-queue approach."
+
+    if sig == "RED":
+        if status in ["CRITICAL", "HIGH"] or queue >= 10:
+            return "GREEN", f"Heavy approach queue detected ({queue} vehicles). AI recommends transitioning signal to GREEN."
+        if status == "MODERATE" or queue >= 5:
+            return "GREEN", f"Approach wait threshold reached ({queue} vehicles). AI recommends green phase."
+        return "RED", f"Opposing cross-street currently on green phase. Maintain red phase (queue: {queue})."
+
+    if sig == "GREEN":
+        if status in ["CRITICAL", "HIGH"] or queue >= 15:
+            return "GREEN", f"High approach queue on green phase ({queue} vehicles). AI recommends extending green duration."
+        if status == "SMOOTH" and queue <= 6:
+            return "RED", f"Approach queue cleared ({queue} vehicles). AI recommends transitioning green phase to cross-street for traffic fairness."
+        return "GREEN", "Moderate flow on green phase. Maintain green signal."
+
+    return "GREEN", "AI decision support active."
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
