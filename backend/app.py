@@ -15,7 +15,7 @@ from services.state_manager import state_manager
 from services.tomtom_traffic import tomtom_service
 from services.socket_service import init_socketio, socketio
 
-# ── Blueprint imports ─────────────────────────────────────────────────────────
+# ── Blueprint imports ──────────────────────────────────────────────────────────
 from routes.junction_routes import junctions_bp
 from routes.traffic_routes import traffic_bp
 from routes.route_routes import routes_bp
@@ -26,13 +26,13 @@ from routes.event_routes import events_bp
 def create_app() -> Flask:
     app = Flask(__name__)
 
-    # ── Start TomTom Traffic Service ──────────────────────────────────────────
+    # ── Start TomTom Traffic Service ────────────────────────────────────────────
     tomtom_service.start_background_sync(Config.TOMTOM_SYNC_INTERVAL)
 
-    # ── CORS ────────────────────────────────────────────────────────────
+    # ── CORS ────────────────────────────────────────────────────────────────────
     CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=False)
 
-    # ── Socket.IO (for Ambulance App) ─────────────────────────────────────────
+    # ── Socket.IO (for Ambulance App) ──────────────────────────────────────────
     init_socketio(app)
 
     # ── WebSockets (for Control Room Website) ──────────────────────────────────
@@ -80,7 +80,7 @@ def create_app() -> Flask:
         finally:
             state_manager.unregister_ws(ws)
 
-    # ── Register blueprints under /api ────────────────────────────────────────
+    # ── Register blueprints under /api ──────────────────────────────────────────
     prefix = "/api"
     app.register_blueprint(junctions_bp, url_prefix=prefix)
     app.register_blueprint(traffic_bp, url_prefix=prefix)
@@ -88,13 +88,13 @@ def create_app() -> Flask:
     app.register_blueprint(ambulance_bp, url_prefix=prefix)
     app.register_blueprint(events_bp, url_prefix=prefix)
 
-    # ── Central Live State REST Endpoint ──────────────────────────────────────
+    # ── Central Live State REST Endpoint ────────────────────────────────────────
     @app.get("/api/state")
     def get_live_state():
         """GET /api/state — Returns full centralized live state snapshot."""
         return jsonify(state_manager.get_state())
 
-    # ── Health check ──────────────────────────────────────────────────────────
+    # ── Health check ────────────────────────────────────────────────────────────
     @app.get("/health")
     def health():
         return jsonify({
@@ -102,10 +102,10 @@ def create_app() -> Flask:
             "service": "omni-smartcity-api",
             "centralState": "ACTIVE",
             "websocketEndpoint": "/ws/live",
-            "socketIoEndpoint": "http://0.0.0.0:5000"
+            "socketIoEndpoint": "/"
         })
 
-    # ── 404 / 405 JSON handlers ───────────────────────────────────────────────
+    # ── 404 / 405 JSON handlers ─────────────────────────────────────────────────
     @app.errorhandler(404)
     def not_found(e):
         return jsonify({"error": "Endpoint not found", "hint": "Check /health for available routes"}), 404
