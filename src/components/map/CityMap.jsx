@@ -242,7 +242,7 @@ export const JunctionModal = ({ junction, onClose }) => {
                           <g>
                             <rect x="260" y="110" width="40" height="30" rx="3" fill="none" stroke="#EF4444" strokeWidth="2.5" className="animate-pulse" />
                             <text x="260" y="104" fill="#EF4444" fontSize="9" fontWeight="bold" fontFamily="JetBrains Mono">
-                              AMBULANCE AMB-102
+                              AMBULANCE {ambulance.id || 'ACTIVE'}
                             </text>
                           </g>
                         )}

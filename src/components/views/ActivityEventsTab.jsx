@@ -64,7 +64,7 @@ export const ActivityEventsTab = () => {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-white">Active Emergency Dispatch: {ambulance.callsign || 'AMB-102'}</span>
+                <span className="text-xs font-bold text-white">Active Emergency Dispatch: {ambulance.callsign || ambulance.id || 'ACTIVE AMBULANCE'}</span>
                 <SourceBadge source="SIMULATED" label="GPS STREAM" />
               </div>
               <p className="text-[11px] text-[#B8BEC4] mt-0.5 font-mono">

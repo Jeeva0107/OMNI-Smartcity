@@ -157,7 +157,7 @@ export const emergencyService = {
   },
 
   /** Start a new emergency corridor (pending approval) */
-  async startEmergency(ambulanceId = 'AMB-102', origin = 'J1', destination = 'J7', routeId = 'ROUTE-A') {
+  async startEmergency(ambulanceId = 'AMB-204', origin = 'J1', destination = 'J7', routeId = 'ROUTE-A') {
     return apiFetch('/emergency/start', {
       method: 'POST',
       body:   JSON.stringify({ ambulanceId, origin, destination, routeId }),
@@ -185,7 +185,7 @@ export const emergencyService = {
   },
 
   /** Operator approves the green-wave corridor */
-  async approveCorridor(ambulanceId = 'AMB-102') {
+  async approveCorridor(ambulanceId) {
     return apiFetch('/corridor/approve', {
       method: 'POST',
       body:   JSON.stringify({ ambulanceId }),
@@ -193,7 +193,7 @@ export const emergencyService = {
   },
 
   /** Operator rejects the corridor */
-  async rejectCorridor(ambulanceId = 'AMB-102') {
+  async rejectCorridor(ambulanceId) {
     return apiFetch('/corridor/reject', {
       method: 'POST',
       body:   JSON.stringify({ ambulanceId }),

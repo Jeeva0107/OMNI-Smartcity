@@ -473,7 +473,7 @@ def start_ambulance_trip(data: dict) -> dict:
         "id": ambulance_id,
         "ambulanceId": ambulance_id,
         "tripId": trip_id,
-        "callsign": f"MEDIC-102 (CHENNAI EMERGENCY RESPONDER)",
+        "callsign": f"MEDIC-{ambulance_id.replace('AMB-', '')} (CHENNAI EMERGENCY RESPONDER)",
         "status": "EMERGENCY ACTIVE",
         "tripStatus": "ACTIVE",
         "corridorStatus": "PRIORITY ACTIVE",

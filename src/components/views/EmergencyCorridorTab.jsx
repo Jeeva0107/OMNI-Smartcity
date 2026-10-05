@@ -33,10 +33,20 @@ export const EmergencyCorridorTab = () => {
 
   const routeJunctionsList = ambulance.routeJunctions || ['J1', 'J8', 'J2', 'J7'];
 
+  // Debug logging as required by specification
+  useEffect(() => {
+    console.log('[EmergencyCorridor] LIVE AMBULANCE:', {
+      id: ambulance?.id,
+      latitude: ambulance?.latitude,
+      longitude: ambulance?.longitude,
+      active: ambulance?.active
+    });
+  }, [ambulance]);
+
   // Determine if ambulance is live active
   const isLiveActive = Boolean(ambulance && ambulance.active);
   const ambulanceId = isLiveActive ? (ambulance.id || 'AMB-ACTIVE') : 'NO_ACTIVE_AMBULANCE';
-  const dataSource = isLiveActive ? (ambulance.source || ambulance.dataSource || 'LIVE BACKEND') : 'SIMULATED';
+  const dataSource = isLiveActive ? (ambulance.source || ambulance.dataSource || 'LIVE BACKEND') : 'STANDBY';
 
   return (
     <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-[#090B0D]">
@@ -52,8 +62,8 @@ export const EmergencyCorridorTab = () => {
               <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-red-500 text-white uppercase animate-pulse">
                 EMERGENCY CORRIDOR
               </span>
-              <SourceBadge source={dataSource} label={dataSource === 'LIVE BACKEND' ? 'LIVE GPS' : 'SIMULATED DRIVER GPS'} />
-              <span className="text-xs text-[#737B82] font-mono">{ambulance.callsign || ambulanceId}</span>
+              <SourceBadge source={dataSource} label={dataSource === 'LIVE BACKEND' ? 'LIVE GPS' : 'STANDBY'} />
+              <span className="text-xs text-[#737B82] font-mono">{isLiveActive ? (ambulance.callsign || ambulanceId) : 'NO ACTIVE AMBULANCE'}</span>
             </div>
             <h2 className="text-lg font-extrabold text-white mt-0.5">
               AMBULANCE CORRIDOR ROUTE &amp; GREEN-WAVE CLEARANCE
@@ -62,7 +72,7 @@ export const EmergencyCorridorTab = () => {
               {isLiveActive ? (
                 <>Active Trip: <strong className="text-cyan-400">{ambulanceId}</strong> • Position Source: <strong className="text-white">Live Backend GPS</strong> • Destination: <strong className="text-emerald-400">{ambulance.destination || 'Rajiv Gandhi Govt General Hospital'}</strong></>
               ) : (
-                <>No Active Emergency Trip • Position Source: <strong className="text-white">Simulated Ambulance Driver GPS</strong> • Destination: <strong className="text-emerald-400">Rajiv Gandhi Govt General Hospital</strong></>
+                <>No Active Emergency Trip • Position Source: <strong className="text-white">Standby</strong> • Destination: <strong className="text-emerald-400">Rajiv Gandhi Govt General Hospital</strong></>
               )}
             </p>
           </div>
@@ -72,7 +82,7 @@ export const EmergencyCorridorTab = () => {
         <div className="flex items-center gap-2">
           {!isLiveActive && (
             <button
-              onClick={() => startEmergency('AMB-102', 'J1', 'J7', selectedRouteId)}
+              onClick={() => startEmergency(ambulance?.id || 'AMB-204', 'J1', 'J7', selectedRouteId)}
               className="px-3 py-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/40 font-bold text-xs transition-all flex items-center gap-1.5"
             >
               <Play className="w-3.5 h-3.5 fill-current" />

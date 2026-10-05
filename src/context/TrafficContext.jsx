@@ -34,17 +34,33 @@ const TrafficContext = createContext(null);
 // ─────────────────────────────────────────────────────────────────────────────
 function normalizeAmbulance(raw) {
   if (!raw || typeof raw !== 'object') return null;
+
+  const isActive = Boolean(
+    raw.active || 
+    raw.emergencyActive || 
+    raw.tripStatus === 'ACTIVE' || 
+    raw.status === 'EMERGENCY ACTIVE' || 
+    raw.corridorStatus === 'PRIORITY ACTIVE'
+  );
+
+  // Extract true active ambulance ID (prioritize raw.ambulanceId over stale raw.id)
+  const ambId = (raw.ambulanceId && raw.ambulanceId !== 'AMB-102')
+    ? raw.ambulanceId
+    : (raw.id && raw.id !== 'AMB-102')
+      ? raw.id
+      : (raw.ambulanceId || (isActive ? raw.id : ''));
+
   return {
     ...raw,
-    active:               raw.active               ?? false,
-    id:                   raw.id                   || raw.ambulanceId || 'AMB-102',
-    callsign:             raw.callsign             || (raw.id ? `MEDIC-${raw.id}` : 'MEDIC-102'),
+    active:               isActive,
+    id:                   ambId || '',
+    callsign:             ambId ? `MEDIC-${ambId.replace(/^AMB-?/, '')}` : (raw.callsign && !raw.callsign.includes('102') ? raw.callsign : ''),
     unit:                 raw.unit                 || '',
     patientStatus:        raw.patientStatus        || '',
     origin:               raw.origin               || '',
     destination:          raw.destination          || raw.destinationName || '',
-    latitude:             raw.latitude ?? raw.lat  ?? 13.0067,
-    longitude:            raw.longitude ?? raw.lng ?? 80.2020,
+    latitude:             raw.latitude ?? raw.lat  ?? null,
+    longitude:            raw.longitude ?? raw.lng ?? null,
     speed:                raw.speed                ?? 0,
     eta:                  raw.eta                  || '--:--',
     distRemaining:        raw.distRemaining        || '',
@@ -471,9 +487,10 @@ export const TrafficProvider = ({ children }) => {
     emergencyService.resetEmergency().catch(() => {});
   }, []);
 
-  const startEmergency = useCallback((ambulanceId = 'AMB-102', origin = 'J1', destination = 'J7', routeId = 'ROUTE-A') => {
-    emergencyService.startEmergency(ambulanceId, origin, destination, routeId).catch(() => {});
-  }, []);
+  const startEmergency = useCallback((ambulanceId, origin = 'J1', destination = 'J7', routeId = 'ROUTE-A') => {
+    const targetAmbId = ambulanceId || ambulance?.id || 'AMB-204';
+    emergencyService.startEmergency(targetAmbId, origin, destination, routeId).catch(() => {});
+  }, [ambulance?.id]);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Congestion spike

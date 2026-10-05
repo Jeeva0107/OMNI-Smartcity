@@ -539,24 +539,20 @@ export const INITIAL_ROUTES = [
 // Simulated ambulance GPS (PROTOTYPE — GPS data is generated locally, not from a real device)
 export const INITIAL_AMBULANCE = {
   active: false,
-  id: 'AMB-102',
-  callsign: 'MEDIC-102',
+  id: '',
+  callsign: '',
   unit: 'Chennai Central Emergency Station — Unit 44',
   patientStatus: 'CODE RED — Acute Trauma',
   origin: 'J1 — Kathipara Flyover',
   destination: 'J7 — RGGGH (Rajiv Gandhi Govt Hospital ER)',
-  speed: 64,
-  eta: '06:45',
-  distRemaining: '12.4 km',
-  corridorApproved: true,
+  speed: 0,
+  eta: '--:--',
+  distRemaining: '0 km',
+  corridorApproved: false,
   currentJunctionIndex: 0,
   routeJunctions: ['J1', 'J2', 'J7'],
-  junctionStatus: {
-    'J1': { status: 'PASSED', signal: 'GREEN', queueCleared: true },
-    'J2': { status: 'READY', signal: 'GREEN', clearanceWindow: '45s', queueCleared: true },
-    'J7': { status: 'PREPARING', signal: 'YELLOW_TRANSITION', clearanceWindow: '90s', queueCleared: false }
-  },
-  dataSource: 'SIMULATED'
+  junctionStatus: {},
+  dataSource: 'LIVE'
 };
 
 // Camera references (PROTOTYPE — no live video feed; reference IDs link to physical camera records)
