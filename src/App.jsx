@@ -6,7 +6,6 @@ import { Header } from './components/layout/Header';
 import { OverviewTab } from './components/views/OverviewTab';
 import { LiveTrafficTab } from './components/views/LiveTrafficTab';
 import { TrafficIntelligenceTab } from './components/views/TrafficIntelligenceTab';
-import { RouteIntelligenceTab } from './components/views/RouteIntelligenceTab';
 import { JunctionControlTab } from './components/views/JunctionControlTab';
 import { EmergencyCorridorTab } from './components/views/EmergencyCorridorTab';
 import { CameraAnalyticsTab } from './components/views/CameraAnalyticsTab';
@@ -20,13 +19,12 @@ const MainContent = () => {
   const { activeTab } = useTraffic();
 
   return (
-    <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden bg-[#F5F4FA] text-[#18243D]">
+    <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden bg-[var(--page-bg)] text-[var(--text-main)]">
       <Header />
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-[#F5F4FA]">
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-[var(--page-bg)]">
         {activeTab === 'overview' && <OverviewTab />}
         {activeTab === 'live_traffic' && <LiveTrafficTab />}
         {activeTab === 'traffic_intelligence' && <TrafficIntelligenceTab />}
-        {activeTab === 'route_intelligence' && <RouteIntelligenceTab />}
         {activeTab === 'junction_control' && <JunctionControlTab />}
         {activeTab === 'emergency_corridor' && <EmergencyCorridorTab />}
         {activeTab === 'camera_analytics' && <CameraAnalyticsTab />}
@@ -43,7 +41,7 @@ const MainContent = () => {
 export default function App() {
   return (
     <TrafficProvider>
-      <div className="flex h-screen w-screen overflow-hidden bg-[#F5F4FA] text-[#18243D] antialiased">
+      <div className="light-dashboard flex h-screen w-screen overflow-hidden bg-[var(--page-bg)] text-[var(--text-main)] antialiased">
         <Sidebar />
         <MainContent />
       </div>

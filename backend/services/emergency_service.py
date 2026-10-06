@@ -16,7 +16,6 @@ import logging
 from typing import Dict, Any, List, Optional
 from services.state_manager import state_manager
 from services.junction_service import get_all_junctions, apply_signal
-from config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -198,6 +197,7 @@ def start_emergency(
     amb_updates = {
         "active": True,
         "emergencyActive": True,
+        "gpsMode": "SIMULATED",
         "id": ambulance_id,
         "callsign": f"MEDIC-102 (CHENNAI EMERGENCY RESPONDER)",
         "status": "EMERGENCY ACTIVE",
@@ -280,26 +280,11 @@ def advance_ambulance() -> dict:
     wp_idx = amb.get("waypointIndex", 0) + 1
 
     if wp_idx >= len(waypoints):
-        # Arrived at hospital
-        amb["active"] = False
-        amb["emergencyActive"] = False
-        amb["status"] = "ARRIVED"
-        amb["eta"] = "ARRIVED"
-        amb["etaSeconds"] = 0
-        amb["distRemaining"] = 0.0
         amb["latitude"] = waypoints[-1]["lat"]
         amb["longitude"] = waypoints[-1]["lng"]
-        updated = state_manager.update_ambulance_and_corridor(amb, notify=True)
-
-        state_manager.push_event(
-            category="EMERGENCY",
-            location=waypoints[-1].get("junctionId") or "J7",
-            title="AMB-102 ARRIVED AT DESTINATION",
-            description="Ambulance AMB-102 has arrived safely at Rajiv Gandhi Govt General Hospital.",
-            severity="SUCCESS",
-            status="COMPLETED"
-        )
-        return updated
+        state_manager.update_ambulance_and_corridor(amb, notify=True)
+        end_ambulance_trip(amb.get("id"), amb.get("tripId"))
+        return state_manager.get_ambulance()
 
     curr_wp = waypoints[wp_idx]
     eta_info = calculate_dynamic_eta(route_id, waypoints, wp_idx)
@@ -438,10 +423,40 @@ def start_ambulance_trip(data: dict) -> dict:
         norm_poly = []
         for pt in polyline:
             if isinstance(pt, dict):
-                lat = float(pt.get("latitude") or pt.get("lat") or wp0["lat"])
-                lng = float(pt.get("longitude") or pt.get("lng") or wp0["lng"])
-                norm_poly.append({"latitude": lat, "longitude": lng, "lat": lat, "lng": lng})
+                lat_value = pt.get("latitude", pt.get("lat"))
+                lng_value = pt.get("longitude", pt.get("lng"))
+            elif isinstance(pt, (list, tuple)) and len(pt) >= 2:
+                lat_value, lng_value = pt[0], pt[1]
+            else:
+                continue
+            if lat_value is None or lng_value is None:
+                continue
+            try:
+                lat = float(lat_value)
+                lng = float(lng_value)
+                if not math.isfinite(lat) or not math.isfinite(lng):
+                    continue
+            except (TypeError, ValueError):
+                continue
+            norm_poly.append({"latitude": lat, "longitude": lng, "lat": lat, "lng": lng})
         polyline = norm_poly if norm_poly else [{"latitude": w["lat"], "longitude": w["lng"], "lat": w["lat"], "lng": w["lng"]} for w in waypoints]
+
+    current_location_input = data.get("currentLocation") or data.get("location")
+    if isinstance(current_location_input, dict):
+        current_lat = current_location_input.get("latitude", current_location_input.get("lat"))
+        current_lng = current_location_input.get("longitude", current_location_input.get("lng"))
+    elif isinstance(current_location_input, (list, tuple)) and len(current_location_input) >= 2:
+        current_lat, current_lng = current_location_input[0], current_location_input[1]
+    else:
+        current_lat = current_lng = None
+    try:
+        current_lat = float(current_lat)
+        current_lng = float(current_lng)
+        if not math.isfinite(current_lat) or not math.isfinite(current_lng):
+            raise ValueError("Current location coordinates must be finite")
+    except (TypeError, ValueError):
+        current_lat = polyline[0]["latitude"]
+        current_lng = polyline[0]["longitude"]
 
     eta_info = calculate_dynamic_eta(norm_route_id, waypoints, 0)
     path = ["J1", "J8", "J2", "J7"] if norm_route_id == "ROUTE-A" else ["J1", "J10", "J11", "J3", "J7"]
@@ -507,6 +522,7 @@ def start_ambulance_trip(data: dict) -> dict:
     trip_record = {
         "active": True,
         "emergencyActive": True,
+        "gpsMode": "EXTERNAL",
         "id": ambulance_id,
         "ambulanceId": ambulance_id,
         "ambulanceName": amb_name,
@@ -515,12 +531,12 @@ def start_ambulance_trip(data: dict) -> dict:
         "status": "EMERGENCY ACTIVE",
         "tripStatus": "ACTIVE",
         "corridorStatus": "ACTIVE",
-        "source": "LIVE BACKEND + SIMULATED GPS",
-        "latitude": polyline[0]["latitude"],
-        "longitude": polyline[0]["longitude"],
+        "source": "LIVE BACKEND + EXTERNAL GPS",
+        "latitude": current_lat,
+        "longitude": current_lng,
         "currentLocation": {
-            "latitude": polyline[0]["latitude"],
-            "longitude": polyline[0]["longitude"]
+            "latitude": current_lat,
+            "longitude": current_lng
         },
         "destination": hospital_name,
         "destinationLocation": {
@@ -585,6 +601,8 @@ def start_ambulance_trip(data: dict) -> dict:
             "ambulanceId": ambulance_id,
             "ambulanceName": amb_name,
             "tripId": trip_id,
+            "gpsMode": "EXTERNAL",
+            "source": "LIVE BACKEND + EXTERNAL GPS",
             "active": True,
             "status": "ACTIVE",
             "routeId": norm_route_id,
@@ -593,6 +611,8 @@ def start_ambulance_trip(data: dict) -> dict:
             "destination": trip_record["destination"],
             "destinationLocation": trip_record["destinationLocation"],
             "location": trip_record["currentLocation"],
+            "latitude": trip_record["latitude"],
+            "longitude": trip_record["longitude"],
             "etaSeconds": eta_info["etaSeconds"],
             "eta": eta_info["eta"],
             "currentLocation": trip_record["currentLocation"],
@@ -689,6 +709,7 @@ def update_ambulance_location(data: dict) -> dict:
     )
 
     updates = {
+        "gpsMode": "EXTERNAL",
         "latitude": lat,
         "longitude": lng,
         "currentLocation": {
@@ -705,7 +726,7 @@ def update_ambulance_location(data: dict) -> dict:
         "etaSeconds": eta_sec,
         "eta": eta_formatted,
         "updatedAt": time.strftime("%H:%M:%S"),
-        "source": "LIVE BACKEND + LIVE GPS" if Config.USE_REAL_GPS else "LIVE BACKEND + SIMULATED GPS"
+        "source": "LIVE BACKEND + EXTERNAL GPS"
     }
 
     # ─── CRITICAL: Update StateManager (single source of truth) ───────────────
@@ -925,6 +946,7 @@ def end_ambulance_trip(ambulance_id: str = "AMB-102", trip_id: str = "TRIP-102")
     updates = {
         "active": False,
         "emergencyActive": False,
+        "gpsMode": "IDLE",
         "status": "COMPLETED",
         "tripStatus": "COMPLETED",
         "corridorStatus": "COMPLETED",
@@ -1069,7 +1091,11 @@ def _gps_auto_ticker():
                 if _sim_paused:
                     continue
             amb = state_manager.get_ambulance()
-            if amb.get("active") and amb.get("emergencyActive"):
+            if (
+                amb.get("active")
+                and amb.get("emergencyActive")
+                and amb.get("gpsMode") != "EXTERNAL"
+            ):
                 advance_ambulance()
         except Exception as e:
             logger.warning(f"[EmergencyService] GPS tick error: {e}")

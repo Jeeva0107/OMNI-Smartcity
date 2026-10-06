@@ -3,15 +3,16 @@ import { useTraffic } from "../../context/TrafficContext";
 import { SourceBadge } from "../map/GeoMap";
 import { JunctionModal } from "../map/CityMap";
 import { cameraService } from "../../services/apiServices";
-import { Camera, Maximize2, AlertTriangle, Clock, Cpu, Radio, ShieldCheck, Activity } from "lucide-react";
+import { Camera, Maximize2, Video } from "lucide-react";
+import trafficSignalVideo from "../../assets/traffic-signal-demo.mp4";
 
 // Status colour tokens
 const STATUS_STYLES = {
-  SMOOTH:   { text: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/30", dot: "bg-emerald-400" },
-  MODERATE: { text: "text-amber-400",   bg: "bg-amber-500/10 border-amber-500/30",     dot: "bg-amber-400"   },
-  HIGH:     { text: "text-orange-400",  bg: "bg-orange-500/10 border-orange-500/30",   dot: "bg-orange-400"  },
-  CRITICAL: { text: "text-red-400",     bg: "bg-red-500/10 border-red-500/30",         dot: "bg-red-400"     },
-  OFFLINE:  { text: "text-[#5A636B]",  bg: "bg-[#1A2028] border-[#242A30]",           dot: "bg-[#5A636B]"   },
+  SMOOTH:   { text: "text-green-800",  bg: "bg-green-50 border-green-200",    dot: "bg-green-700" },
+  MODERATE: { text: "text-amber-800",  bg: "bg-amber-50 border-amber-200",    dot: "bg-amber-700" },
+  HIGH:     { text: "text-orange-800", bg: "bg-orange-50 border-orange-200",  dot: "bg-orange-700" },
+  CRITICAL: { text: "text-red-800",    bg: "bg-red-50 border-red-200",        dot: "bg-red-700" },
+  OFFLINE:  { text: "text-slate-700",  bg: "bg-slate-50 border-slate-200",    dot: "bg-slate-600" },
 };
 
 const statusStyle = (s) => STATUS_STYLES[s] || STATUS_STYLES.SMOOTH;
@@ -23,10 +24,10 @@ const fmtConf = (c) => {
 };
 
 // Derived metric row helper
-const Row = ({ label, value, valueColor = "#fff", badge }) => (
-  <div className="flex items-center justify-between py-1 border-b border-[#1A2028] text-[10px]">
+const Row = ({ label, value, valueColor = "#172554", badge }) => (
+  <div className="flex items-center justify-between border-b border-slate-200 py-1 text-[10px]">
     <div className="flex items-center gap-1.5">
-      <span className="text-[#6A737B]">{label}</span>
+      <span className="text-slate-600">{label}</span>
       {badge && <SourceBadge source={badge} />}
     </div>
     <span className="font-mono font-bold" style={{ color: valueColor }}>{value}</span>
@@ -37,17 +38,17 @@ const Row = ({ label, value, valueColor = "#fff", badge }) => (
 const DerivedSpeedBar = ({ current, freeFlow }) => {
   if (!freeFlow || !current) return null;
   const pct = Math.min(100, Math.round((current / freeFlow) * 100));
-  const color = pct >= 85 ? "#10b981" : pct >= 65 ? "#f59e0b" : pct >= 40 ? "#f97316" : "#ef4444";
+  const color = pct >= 85 ? "#15803D" : pct >= 65 ? "#B45309" : pct >= 40 ? "#C2410C" : "#B91C1C";
   return (
-    <div className="mt-2 pt-1 border-t border-[#1A2028]">
-      <div className="flex items-center justify-between text-[9px] text-[#5A636B] mb-1">
+    <div className="mt-2 border-t border-slate-200 pt-1">
+      <div className="mb-1 flex items-center justify-between text-[9px] text-slate-600">
         <span className="flex items-center gap-1">
           <span>Speed Ratio</span>
           <SourceBadge source="DERIVED" />
         </span>
         <span style={{ color }} className="font-mono font-bold">{pct}%</span>
       </div>
-      <div className="h-1 bg-[#1A2028] rounded-full overflow-hidden">
+      <div className="h-1 overflow-hidden rounded-full bg-slate-100">
         <div className="h-1 rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: color }} />
       </div>
     </div>
@@ -67,14 +68,10 @@ const TomTomIntelCard = ({ junction, tomtomStatus }) => {
     : null;
 
   return (
-    <div className="relative w-full h-full bg-[#0C1014] flex flex-col overflow-hidden p-3">
-      {/* Background texture */}
-      <div className="absolute inset-0 opacity-5 pointer-events-none bg-[radial-gradient(#06b6d4_1px,transparent_1px)] [background-size:16px_16px]" />
-
-      {/* Top Header */}
-      <div className="relative flex items-center justify-between pb-2 border-b border-[#1E2530]">
+    <div className="flex h-full w-full flex-col overflow-hidden bg-white p-3">
+      <div className="flex items-center justify-between border-b border-slate-200 pb-2">
         <div className="flex items-center gap-1.5">
-          <span className={`w-2 h-2 rounded-full ${isLive ? 'bg-cyan-400 pulse-dot' : 'bg-[#5A636B]'}`} />
+          <span className={`h-2 w-2 rounded-full ${isLive ? 'bg-blue-700 pulse-dot' : 'bg-slate-500'}`} />
           <span className={`text-[10px] font-mono font-bold ${st.text}`}>
             {junction?.status ?? "SMOOTH"}
           </span>
@@ -82,25 +79,23 @@ const TomTomIntelCard = ({ junction, tomtomStatus }) => {
         <SourceBadge source={isLive ? "TOMTOM_LIVE" : "SIMULATED"} />
       </div>
 
-      {/* TomTom Data Fields */}
-      <div className="relative flex-1 py-1 space-y-0.5 overflow-y-auto">
-        <Row label="Current Speed" value={junction?.speed != null ? `${junction.speed} km/h` : "--"} valueColor={isLive ? "#fff" : "#6A737B"} />
-        <Row label="Free Flow Speed" value={junction?.freeFlowSpeed != null ? `${junction.freeFlowSpeed} km/h` : "--"} valueColor="#22d3ee" />
+      <div className="flex-1 space-y-0.5 overflow-y-auto py-1">
+        <Row label="Current Speed" value={junction?.speed != null ? `${junction.speed} km/h` : "--"} valueColor="#172554" />
+        <Row label="Free Flow Speed" value={junction?.freeFlowSpeed != null ? `${junction.freeFlowSpeed} km/h` : "--"} valueColor="#1D4ED8" />
         <Row label="Travel Time" value={junction?.travelTime != null ? `${junction.travelTime} s` : "--"} />
         <Row label="Free Flow Time" value={junction?.freeFlowTravelTime != null ? `${junction.freeFlowTravelTime} s` : "--"} />
-        <Row label="Confidence" value={fmtConf(junction?.confidence)} valueColor="#10b981" />
-        <Row label="Road Closure" value={junction?.roadClosure ? "CLOSED" : "OPEN"} valueColor={junction?.roadClosure ? "#ef4444" : "#10b981"} />
+        <Row label="Confidence" value={fmtConf(junction?.confidence)} valueColor="#15803D" />
+        <Row label="Road Closure" value={junction?.roadClosure ? "CLOSED" : "OPEN"} valueColor={junction?.roadClosure ? "#B91C1C" : "#15803D"} />
         {delaySec !== null && (
-          <Row label="Derived Delay" value={`+${delaySec} s`} valueColor={delaySec > 20 ? "#f97316" : "#10b981"} badge="DERIVED" />
+          <Row label="Derived Delay" value={`+${delaySec} s`} valueColor={delaySec > 20 ? "#C2410C" : "#15803D"} badge="DERIVED" />
         )}
         {globalLive && (
-          <Row label="Incidents" value={incidentCount} valueColor={incidentCount > 0 ? "#f59e0b" : "#5A636B"} />
+          <Row label="Incidents" value={incidentCount} valueColor={incidentCount > 0 ? "#B45309" : "#475569"} />
         )}
         <DerivedSpeedBar current={junction?.speed} freeFlow={junction?.freeFlowSpeed} />
       </div>
 
-      {/* Footer Timestamp */}
-      <div className="relative pt-1 border-t border-[#1A2028] flex items-center justify-between text-[9px] text-[#5A636B] font-mono">
+      <div className="flex items-center justify-between border-t border-slate-200 pt-1 font-mono text-[9px] text-slate-600">
         <span>UPDATED: {junction?.lastUpdated || "JUST NOW"}</span>
         <SourceBadge source="UNAVAILABLE" label="NO DIRECT VIDEO" />
       </div>
@@ -109,9 +104,9 @@ const TomTomIntelCard = ({ junction, tomtomStatus }) => {
 };
 
 const CAMERA_DEFS = [
-  { id: "CAM-01", junctionId: "J1",  name: "Kathipara Cloverleaf North",      isRealYolo: true  },
-  { id: "CAM-02", junctionId: "J2",  name: "Gemini Circle • Anna Salai",      isRealYolo: false },
-  { id: "CAM-03", junctionId: "J3",  name: "Koyambedu Flyover • PH Road",    isRealYolo: false },
+  { id: "CAM-01", junctionId: "J1",  name: "Kathipara Flyover Junction",      isRealYolo: true  },
+  { id: "CAM-02", junctionId: "J2",  name: "Gemini Circle",                   isRealYolo: false },
+  { id: "CAM-03", junctionId: "J3",  name: "Koyambedu Flyover",                isRealYolo: false },
   { id: "CAM-04", junctionId: "J4",  name: "Madhya Kailash • OMR Entry",     isRealYolo: false },
   { id: "CAM-05", junctionId: "J5",  name: "Tidel Park • South Hub",         isRealYolo: false },
   { id: "CAM-06", junctionId: "J6",  name: "Velachery Vijaya Nagar Flyover", isRealYolo: false },
@@ -124,10 +119,18 @@ const CAMERA_DEFS = [
 ];
 
 export const CameraAnalyticsTab = () => {
-  const { junctions, wsConnected, tomtomStatus, setSelectedJunctionId, setActiveTab } = useTraffic();
+  const {
+    junctions,
+    wsConnected,
+    backendOnline,
+    backendError,
+    tomtomStatus,
+    setSelectedJunctionId,
+    setActiveTab,
+  } = useTraffic();
   const [selectedJunctionForModal, setSelectedJunctionForModal] = useState(null);
   const [realYoloData, setRealYoloData] = useState(null);
-  const [videoFeedError, setVideoFeedError] = useState(false);
+  const [videoLoadError, setVideoLoadError] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -136,7 +139,6 @@ export const CameraAnalyticsTab = () => {
         const data = await cameraService.getCameraDetections("CAM-01");
         if (active && data) {
           setRealYoloData(data);
-          if (data.status === "OK") setVideoFeedError(false);
         }
       } catch (err) {
         if (active) {
@@ -155,129 +157,151 @@ export const CameraAnalyticsTab = () => {
   };
 
   const isTomTomGlobal = tomtomStatus?.status === "TOMTOM_LIVE";
+  const liveBackendConnected = backendOnline && wsConnected && !backendError;
+  const primaryCamera = CAMERA_DEFS[0];
+  const primaryJunction = junctions.find(junction => junction.id === primaryCamera.junctionId);
+  const rawSignal = String(primaryJunction?.signal || primaryJunction?.currentPhase || "RED").toUpperCase();
+  const signal = rawSignal.includes("GREEN") ? "GREEN" : rawSignal.includes("YELLOW") || rawSignal.includes("AMBER") ? "AMBER" : "RED";
+  const signalColor = signal === "GREEN" ? "#16A34A" : signal === "AMBER" ? "#D97706" : "#DC2626";
+  const detectionStatus = realYoloData?.status === "OK"
+    ? "YOLO DETECTION ACTIVE"
+    : realYoloData?.status === "ERROR"
+      ? "DETECTION BACKEND OFFLINE"
+      : "CONNECTING TO DETECTION";
+  const detectedVehicles = realYoloData?.detectionsCount ?? primaryJunction?.vehicles ?? 0;
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-[#090B0D]">
-      {/* HEADER */}
-      <div className="bg-[#14181C] p-4 rounded-xl border border-[#242A30] flex items-center justify-between">
+    <div className="light-dashboard flex-1 min-h-0 overflow-y-auto space-y-4 bg-[var(--page-bg)] p-4 md:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center">
-            <Camera className="w-5 h-5 text-amber-400" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-violet-200 bg-violet-50">
+            <Camera className="h-5 w-5 text-violet-700" />
           </div>
           <div>
-            <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+            <h3 className="text-sm font-bold text-slate-900">
               Traffic Perception &amp; Camera Analytics — 12 Monitored Junctions
             </h3>
-            <p className="text-[11px] text-[#737B82] mt-0.5">
-              CAM-01: YOLO11n Video Analysis • CAM-02–CAM-12: Live Traffic Intelligence Cards
+            <p className="mt-0.5 text-xs text-slate-600">
+              CAM-01 local traffic video with live detection telemetry · CAM-02–CAM-12 junction analytics
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 text-xs font-mono">
-          <SourceBadge source="YOLO11n" />
-          {isTomTomGlobal ? (
-            <SourceBadge source="TOMTOM_LIVE" />
-          ) : (
-            <SourceBadge source="SIMULATED" />
-          )}
-          <span className={`px-2.5 py-0.5 rounded border text-[10px] font-bold ${
-            wsConnected ? "bg-cyan-500/10 border-cyan-500/30 text-cyan-400" : "bg-red-500/10 border-red-500/30 text-red-400"
-          }`}>
-            {wsConnected ? "WS LIVE" : "WS OFFLINE"}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-bold text-violet-800">YOLO11n</span>
+          <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${liveBackendConnected ? "border-green-200 bg-green-50 text-green-800" : backendError ? "border-red-200 bg-red-50 text-red-800" : "border-slate-200 bg-slate-50 text-slate-700"}`}>
+            {liveBackendConnected ? "LIVE DATA CONNECTED" : backendError ? "BACKEND ERROR" : "CONNECTING TO BACKEND"}
+          </span>
+          <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${isTomTomGlobal ? "border-blue-200 bg-blue-50 text-blue-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+            {isTomTomGlobal ? "TOMTOM LIVE" : "LOCAL TRAFFIC DATA"}
           </span>
         </div>
       </div>
 
-      {/* CAMERA & INTELLIGENCE GRID */}
-      <div className="grid grid-cols-3 gap-5">
-        {CAMERA_DEFS.map((cam) => {
+      <section className="camera-grid">
+        <article className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-3">
+            <div className="min-w-0">
+              <h2 className="truncate text-sm font-bold text-slate-900">{primaryCamera.id} · {primaryCamera.name}</h2>
+              <p className="mt-0.5 text-xs text-slate-600">{primaryJunction?.name || primaryCamera.junctionId}</p>
+            </div>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[10px] font-bold text-blue-800">
+              <Video className="h-3.5 w-3.5" /> LOCAL TRAFFIC VIDEO
+            </span>
+          </div>
+          <div className="relative aspect-video max-h-[260px] overflow-hidden bg-slate-900">
+            {videoLoadError ? (
+              <div className="flex h-full min-h-48 items-center justify-center px-5 text-center text-sm font-semibold text-white">
+                Local camera video could not be loaded.
+              </div>
+            ) : (
+              <video
+                className="h-full w-full object-cover"
+                src={trafficSignalVideo}
+                controls
+                playsInline
+                preload="metadata"
+                aria-label={`${primaryCamera.name} local traffic signal video`}
+                onError={() => setVideoLoadError(true)}
+              />
+            )}
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs">
+            <span className="text-slate-700">Local project video · standard play, pause, mute, and seek controls</span>
+            <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${
+              realYoloData?.status === "OK"
+                ? "border-green-200 bg-green-50 text-green-800"
+                : realYoloData?.status === "ERROR"
+                  ? "border-red-200 bg-red-50 text-red-800"
+                  : "border-amber-200 bg-amber-50 text-amber-800"
+            }`}>
+              {detectionStatus}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-x-5 gap-y-2 p-4 text-xs sm:grid-cols-3">
+            <div><span className="text-slate-600">Traffic severity</span><p className="font-semibold text-slate-900">{primaryJunction?.status || "UNKNOWN"}</p></div>
+            <div><span className="text-slate-600">Current speed</span><p className="font-semibold text-slate-900">{primaryJunction?.speed ?? "—"} km/h</p></div>
+            <div><span className="text-slate-600">Free-flow speed</span><p className="font-semibold text-slate-900">{primaryJunction?.freeFlowSpeed ?? "—"} km/h</p></div>
+            <div><span className="text-slate-600">Travel time</span><p className="font-semibold text-slate-900">{primaryJunction?.travelTime ?? "—"} s</p></div>
+            <div><span className="text-slate-600">Confidence</span><p className="font-semibold text-slate-900">{fmtConf(primaryJunction?.confidence)}</p></div>
+            <div><span className="text-slate-600">Updated</span><p className="font-semibold text-slate-900">{primaryJunction?.lastUpdated || "JUST NOW"}</p></div>
+            <div><span className="text-slate-600">Signal</span><p className="font-semibold" style={{ color: signalColor }}>{signal} · {primaryJunction?.remainingTime ?? "—"} s</p></div>
+            <div><span className="text-slate-600">Detected vehicles</span><p className="font-semibold text-slate-900">{detectedVehicles}</p></div>
+            <div><span className="text-slate-600">Data source</span><p className="font-semibold text-slate-900">{primaryJunction?.dataSource || (liveBackendConnected ? "Live backend" : "Simulation fallback/unavailable")}</p></div>
+          </div>
+          <div className="flex items-center justify-between gap-3 border-t border-slate-200 p-3">
+            <p className="min-w-0 truncate text-xs text-slate-600">
+              {realYoloData?.status === "OK"
+                ? `Detection active · ${realYoloData.source || "YOLO"}${realYoloData.inferenceMs != null ? ` · ${realYoloData.inferenceMs} ms` : ""}`
+                : realYoloData?.error || "Detection telemetry will appear when the backend is available."}
+            </p>
+            <button
+              type="button"
+              onClick={() => handleOpenJunction(primaryCamera.junctionId)}
+              className="shrink-0 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800 hover:bg-violet-100 focus:outline-none focus:ring-2 focus:ring-violet-500"
+            >
+              Open controls
+            </button>
+          </div>
+        </article>
+
+        {CAMERA_DEFS.filter(cam => cam.id !== "CAM-01").map((cam) => {
           const junctionObj = junctions.find(j => j.id === cam.junctionId);
-          const isCam1      = cam.id === "CAM-01";
-          const isYoloError = isCam1 && (realYoloData?.status === "ERROR" || videoFeedError);
-          const yoloErrMsg  = realYoloData?.error || "YOLO Engine Offline";
-          const camStatus   = isYoloError ? "OFFLINE" : (junctionObj?.status ?? "SMOOTH");
+          const camStatus   = junctionObj?.status ?? "UNKNOWN";
           const st          = statusStyle(camStatus);
 
           return (
-            <div
+            <article
               key={cam.id}
               onClick={() => handleOpenJunction(cam.junctionId)}
-              className="bg-[#14181C] rounded-xl border border-[#242A30] hover:border-amber-500/40 transition-all overflow-hidden cursor-pointer group flex flex-col shadow-lg"
+              className="cursor-pointer group flex min-h-[260px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-all hover:border-violet-300 hover:shadow-md"
             >
-              {/* VIEWPORT AREA */}
-              <div className="relative h-48 bg-[#090B0D] overflow-hidden">
-                {isCam1 ? (
-                  !isYoloError ? (
-                    <div className="relative w-full h-full">
-                      <img
-                        src="https://omni-smartcity-backend.onrender.com/api/cameras/CAM-01/video_feed"
-                        alt="CAM-01 YOLO11n Video Input"
-                        className="w-full h-full object-cover"
-                        onError={() => setVideoFeedError(true)}
-                      />
-                      {/* YOLO Telemetry Overlay */}
-                      <div className="absolute bottom-2 left-2 right-2 bg-[#0C0F13]/90 backdrop-blur-sm p-2 rounded-lg border border-[#242A30] flex items-center justify-between text-[10px]">
-                        <div className="flex items-center gap-2">
-                          <Cpu className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-                          <span className="text-white font-mono font-bold">
-                            {realYoloData?.detectionsCount ?? 14} Vehicles
-                          </span>
-                        </div>
-                        <div className="text-emerald-400 font-mono">
-                          {realYoloData?.inferenceMs ?? 42}ms latency
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="w-full h-full bg-[#180A0A] flex flex-col items-center justify-center p-4 text-center border border-red-500/30">
-                      <AlertTriangle className="w-8 h-8 text-red-500 mb-2 animate-bounce" />
-                      <div className="text-xs font-mono font-bold text-red-400 uppercase tracking-wider">YOLO VIDEO INPUT OFFLINE</div>
-                      <div className="text-[10px] text-red-300/80 font-mono mt-1 max-w-[240px] truncate">{yoloErrMsg}</div>
-                    </div>
-                  )
-                ) : (
-                  <TomTomIntelCard junction={junctionObj} tomtomStatus={tomtomStatus} />
-                )}
-
-                {/* TOP BADGE FOR CAM-01 */}
-                {isCam1 && (
-                  <div className="absolute top-2 left-2 flex items-center gap-1.5 z-10">
-                    <SourceBadge source="YOLO11n" />
-                  </div>
-                )}
-
-                {/* HOVER INSPECT */}
-                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-all bg-[#0E1114]/90 px-2 py-1 rounded text-xs text-white border border-[#242A30] font-semibold flex items-center gap-1 z-10">
-                  <Maximize2 className="w-3.5 h-3.5 text-amber-400" />
+              <div className="relative min-h-[220px] flex-1 overflow-hidden bg-slate-50">
+                <TomTomIntelCard junction={junctionObj} tomtomStatus={tomtomStatus} />
+                <div className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded border border-slate-200 bg-white/95 px-2 py-1 text-xs font-semibold text-slate-800 opacity-0 transition-all group-hover:opacity-100">
+                  <Maximize2 className="h-3.5 w-3.5 text-violet-700" />
                   <span>Inspect</span>
                 </div>
               </div>
 
-              {/* CARD FOOTER */}
-              <div className="p-3 bg-[#14181C] flex items-center justify-between border-t border-[#242A30]">
+              <div className="flex items-center justify-between border-t border-slate-200 bg-white p-3">
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h4 className="text-xs font-bold text-white truncate">{cam.name}</h4>
-                  </div>
-                  <div className="text-[10px] text-[#737B82] mt-0.5 flex items-center gap-2">
-                    <span>{cam.id} • {cam.junctionId}</span>
-                    {isCam1 && realYoloData?.inferenceMs && (
-                      <span className="text-emerald-400 font-mono">{realYoloData.inferenceMs}ms</span>
-                    )}
-                    {!isCam1 && junctionObj?.speed != null && (
-                      <span className="text-cyan-400 font-mono font-bold">{junctionObj.speed} km/h</span>
+                  <h4 className="truncate text-xs font-bold text-slate-900">{cam.id} · {cam.name}</h4>
+                  <div className="mt-0.5 flex items-center gap-2 text-[10px] text-slate-600">
+                    <span>{junctionObj?.name || cam.junctionId}</span>
+                    {junctionObj?.speed != null && (
+                      <span className="font-mono font-bold text-blue-800">{junctionObj.speed} km/h</span>
                     )}
                   </div>
                 </div>
                 <span className={`shrink-0 px-2 py-0.5 text-[9px] font-bold rounded border ${st.bg} ${st.text}`}>
-                  {isYoloError ? "OFFLINE" : camStatus}
+                  {camStatus}
                 </span>
               </div>
-            </div>
+            </article>
           );
         })}
-      </div>
+      </section>
 
       {/* MODAL */}
       {selectedJunctionForModal && (

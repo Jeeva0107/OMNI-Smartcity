@@ -111,10 +111,16 @@ export const TrafficProvider = ({ children }) => {
   // ── Connection state (drives the "LIVE API CONNECTED" badge) ───────────────
   const [wsConnected,   setWsConnected]   = useState(false);
   const [backendOnline, setBackendOnline] = useState(false);
+  const [backendError, setBackendError]   = useState(false);
   const [lastUpdated,   setLastUpdated]   = useState(null);
+  const [lastTripSummary, setLastTripSummary] = useState(null);
 
   // ── Internal Socket.IO ref ──────────────────────────────────────────────────
   const socketRef = useRef(null);
+  const ambulanceRef = useRef(ambulance);
+  const connectionEpochRef = useRef(0);
+  const snapshotRequestIdRef = useRef(0);
+  ambulanceRef.current = ambulance;
 
   const selectedJunction = junctions.find(j => j.id === selectedJunctionId) || null;
 
@@ -190,32 +196,46 @@ export const TrafficProvider = ({ children }) => {
     socketRef.current = socket;
 
     const refreshSnapshot = () => {
+      const requestId = ++snapshotRequestIdRef.current;
+      const connectionEpoch = connectionEpochRef.current;
       emergencyService.getLiveState()
         .then(snapshot => {
+          if (requestId !== snapshotRequestIdRef.current || connectionEpoch !== connectionEpochRef.current) return;
           applyStateSnapshot(snapshot);
           setBackendOnline(true);
+          setBackendError(false);
           console.info('[Socket.IO] REST state snapshot refreshed');
         })
         .catch(error => {
+          if (requestId !== snapshotRequestIdRef.current || connectionEpoch !== connectionEpochRef.current) return;
           setBackendOnline(false);
+          setBackendError(true);
           console.warn('[Socket.IO] REST state refresh failed:', error.message);
         });
     };
 
     socket.on('connect', () => {
+      connectionEpochRef.current += 1;
       console.info('[Socket.IO] Connected to emergency corridor backend');
       setWsConnected(true);
-      setBackendOnline(true);
       refreshSnapshot();
     });
     socket.on('disconnect', reason => {
+      connectionEpochRef.current += 1;
       console.warn('[Socket.IO] Disconnected from backend:', reason);
       setWsConnected(false);
+      setBackendOnline(false);
     });
     socket.on('connect_error', error => {
+      connectionEpochRef.current += 1;
       console.error('[Socket.IO] Backend connection error:', error.message);
       setWsConnected(false);
+      setBackendOnline(false);
+      setBackendError(true);
       refreshSnapshot();
+    });
+    socket.io.on('reconnect_attempt', attempt => {
+      console.info('[Socket.IO] Reconnect attempt:', attempt);
     });
 
     const onTripStarted = data => {
@@ -247,6 +267,14 @@ export const TrafficProvider = ({ children }) => {
     };
     const onTripEnded = data => {
       console.info('[Socket.IO] Emergency trip ended:', data?.tripId);
+      const previous = ambulanceRef.current;
+      setLastTripSummary({
+        tripId: data?.tripId || previous?.tripId || '',
+        ambulanceId: data?.ambulanceId || previous?.id || '',
+        destination: previous?.destination || data?.destination || '',
+        eta: previous?.eta || '',
+        endedAt: data?.timestamp || data?.lastUpdated || new Date().toISOString(),
+      });
       applyAmbulanceEvent({ ...data, active: false, emergencyActive: false, tripStatus: 'COMPLETED' });
       setCorridorData(previous => ({ ...(previous || {}), ...data, active: false }));
     };
@@ -273,8 +301,10 @@ export const TrafficProvider = ({ children }) => {
     }, REST_REFRESH_INTERVAL);
 
     return () => {
+      connectionEpochRef.current += 1;
       clearInterval(restFallback);
       socket.removeAllListeners();
+      socket.io.removeAllListeners('reconnect_attempt');
       socket.disconnect();
       socketRef.current = null;
     };
@@ -492,8 +522,22 @@ export const TrafficProvider = ({ children }) => {
 
   const startEmergency = useCallback((ambulanceId, origin = 'J1', destination = 'J7', routeId = 'ROUTE-A') => {
     const targetAmbId = ambulanceId || ambulance?.id || 'AMB-204';
-    emergencyService.startEmergency(targetAmbId, origin, destination, routeId).catch(() => {});
+    emergencyService.startEmergency(targetAmbId, origin, destination, routeId)
+      .then(response => {
+        if (response?.ambulance) setAmbulance(normalizeAmbulance(response.ambulance));
+      })
+      .catch(error => console.error('[Emergency] Failed to start corridor:', error.message));
   }, [ambulance?.id]);
+
+  const endAmbulanceTrip = useCallback(() => {
+    return emergencyService.endAmbulanceTrip(ambulance?.id, ambulance?.tripId)
+      .then(response => {
+        if (response?.ambulance) setAmbulance(normalizeAmbulance(response.ambulance));
+      })
+      .catch(error => {
+        console.error('[Emergency] Failed to end trip:', error.message);
+      });
+  }, [ambulance?.id, ambulance?.tripId]);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Congestion spike
@@ -572,6 +616,7 @@ export const TrafficProvider = ({ children }) => {
       setAmbulance,
       corridorData,
       etaData,
+      lastTripSummary,
 
       // Cameras / YOLO
       cameras,
@@ -595,6 +640,7 @@ export const TrafficProvider = ({ children }) => {
       pauseAmbulance,
       resetAmbulance,
       startEmergency,
+      endAmbulanceTrip,
       triggerCongestion,
       toggleCorridorApproval,
 
@@ -611,6 +657,7 @@ export const TrafficProvider = ({ children }) => {
       // Connection / status
       wsConnected,
       backendOnline,
+      backendError,
       lastUpdated,
     }}>
       {children}

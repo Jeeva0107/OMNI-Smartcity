@@ -179,6 +179,14 @@ export const emergencyService = {
     return apiFetch('/emergency/reset', { method: 'POST' }, { success: true });
   },
 
+  /** End the active driver trip and restore its corridor signals */
+  async endAmbulanceTrip(ambulanceId, tripId) {
+    return apiFetch('/ambulances/trips/end', {
+      method: 'POST',
+      body: JSON.stringify({ ambulanceId, tripId }),
+    }, { success: true, status: 'TRIP_ENDED' });
+  },
+
   /** Simulate ambulance advancing one GPS step */
   async advanceAmbulance() {
     return apiFetch('/emergency/advance', { method: 'POST' }, { success: true });
