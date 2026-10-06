@@ -1,42 +1,69 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { MapPin, X, Camera, Building2, Clock } from 'lucide-react';
-import { MapContainer, TileLayer, Marker, Polyline, CircleMarker, Tooltip } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Polyline, CircleMarker, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { useTraffic } from '../../context/TrafficContext';
 import { ROAD_CONNECTIONS } from '../../data/mockData';
+import {
+  CHENNAI_JUNCTION_BOUNDS,
+  CHENNAI_MAP_CENTER,
+  CHENNAI_MAP_MAX_ZOOM,
+  CHENNAI_MAP_MIN_ZOOM,
+  CHENNAI_MAP_ZOOM,
+} from './mapConfig';
+
+const DEFAULT_CORRIDOR_JUNCTIONS = ['J1', 'J8', 'J2', 'J7'];
+const EMPTY_CORRIDOR_JUNCTIONS = [];
+const EMPTY_SIGNAL_STATES = Object.freeze({});
+const CHENNAI_LEAFLET_BOUNDS = L.latLngBounds(CHENNAI_JUNCTION_BOUNDS);
+
+const MapBoundsController = () => {
+  const map = useMap();
+
+  useEffect(() => {
+    map.setMaxBounds(CHENNAI_LEAFLET_BOUNDS);
+    map.options.maxBoundsViscosity = 1;
+    const keepMapInChennai = () => map.panInsideBounds(CHENNAI_LEAFLET_BOUNDS, { animate: false });
+    map.on('dragend zoomend', keepMapInChennai);
+    return () => map.off('dragend zoomend', keepMapInChennai);
+  }, [map]);
+
+  return null;
+};
 
 // ── Source Badge component ────────────────────────────────────────────────────
 export const SourceBadge = ({ source, type, label }) => {
   const s = (source || type || label || '').toUpperCase();
   if (s.includes('TOMTOM') || s === 'LIVE' || s.includes('LIVE BACKEND') || s.includes('LIVE GPS')) {
     const liveLabel = s.includes('TOMTOM') ? '▲ TOMTOM LIVE' : '● LIVE BACKEND';
-    return <span className="px-1.5 py-0.5 rounded text-[8px] font-mono font-extrabold bg-cyan-500/15 text-cyan-700 border border-cyan-500/30">{liveLabel}</span>;
+    return <span className="px-1.5 py-0.5 rounded text-[8px] font-mono font-extrabold bg-cyan-50 text-cyan-800 border border-cyan-200">{liveLabel}</span>;
   }
   if (s.includes('YOLO')) {
-    return <span className="px-1.5 py-0.5 rounded text-[8px] font-mono font-extrabold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">● YOLO11n VIDEO INPUT</span>;
+    return <span className="px-1.5 py-0.5 rounded text-[8px] font-mono font-extrabold bg-emerald-50 text-emerald-800 border border-emerald-200">● YOLO11n VIDEO INPUT</span>;
   }
   if (s.includes('DERIVED')) {
-    return <span className="px-1.5 py-0.5 rounded text-[8px] font-mono font-extrabold bg-purple-500/15 text-purple-300 border border-purple-500/30">◇ DERIVED</span>;
+    return <span className="px-1.5 py-0.5 rounded text-[8px] font-mono font-extrabold bg-violet-50 text-violet-800 border border-violet-200">◇ DERIVED</span>;
   }
   if (s.includes('UNAVAIL')) {
-    return <span className="px-1.5 py-0.5 rounded text-[8px] font-mono font-extrabold bg-red-500/15 text-red-400 border border-red-500/30">✕ UNAVAILABLE</span>;
+    return <span className="px-1.5 py-0.5 rounded text-[8px] font-mono font-extrabold bg-red-50 text-red-700 border border-red-200">✕ UNAVAILABLE</span>;
   }
-  return <span className="px-1.5 py-0.5 rounded text-[8px] font-mono font-extrabold bg-amber-500/15 text-amber-400 border border-amber-500/30">◎ SIMULATION FALLBACK</span>;
+  return <span className="px-1.5 py-0.5 rounded text-[8px] font-mono font-extrabold bg-amber-50 text-amber-800 border border-amber-200">◎ SIMULATION FALLBACK</span>;
 };
 
 // ── Status colours ─────────────────────────────────────────────────────────[...]
 const STATUS_COLOR = {
-  SMOOTH:   { fill: '#10b981', stroke: '#059669', text: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/25' },
-  MODERATE: { fill: '#f59e0b', stroke: '#d97706', text: 'text-amber-400',   bg: 'bg-amber-500/10 border-amber-500/25' },
-  HIGH:     { fill: '#f97316', stroke: '#ea580c', text: 'text-orange-400',  bg: 'bg-orange-500/10 border-orange-500/25' },
-  CRITICAL: { fill: '#ef4444', stroke: '#dc2626', text: 'text-red-400',     bg: 'bg-red-500/10 border-red-500/25' },
+  SMOOTH:   { fill: '#10b981', stroke: '#059669', text: 'text-green-800', bg: 'bg-green-50 border-green-200' },
+  MODERATE: { fill: '#f59e0b', stroke: '#d97706', text: 'text-amber-800', bg: 'bg-amber-50 border-amber-200' },
+  HIGH:     { fill: '#f97316', stroke: '#ea580c', text: 'text-orange-800', bg: 'bg-orange-50 border-orange-200' },
+  CRITICAL: { fill: '#ef4444', stroke: '#dc2626', text: 'text-red-800', bg: 'bg-red-50 border-red-200' },
 };
 
 const SIGNAL_COLOR = {
-  GREEN:  'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40',
-  RED:    'bg-red-500/20 text-red-400 border border-red-500/40',
-  YELLOW: 'bg-amber-500/20 text-amber-400 border border-amber-500/40',
-  ALL_RED:'bg-red-700/20 text-red-300 border border-red-700/40',
+  GREEN:  'bg-green-50 text-green-800 border border-green-200',
+  RED:    'bg-red-50 text-red-800 border border-red-200',
+  YELLOW: 'bg-amber-50 text-amber-800 border border-amber-200',
+  AMBER:  'bg-amber-50 text-amber-800 border border-amber-200',
+  ALL_RED:'bg-red-100 text-red-900 border border-red-300',
 };
 
 // ── Helper: parse lat/lng that may come as "12.9784° N" string or as number ──
@@ -180,17 +207,20 @@ export const JunctionPanel = ({ junction, onClose }) => {
             <span>Signal State</span>
             <SourceBadge source="SIMULATED" />
           </div>
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex flex-wrap items-center gap-2 mb-2">
             <span className={`px-3 py-1 rounded font-data font-bold text-xs ${SIGNAL_COLOR[junction.signal] || SIGNAL_COLOR.RED}`}>
-              ● {junction.signal}
+              Current signal: {junction.signal}
             </span>
-            <span className="text-[10px] text-[#5A636B]">→ Recommended:</span>
-            <span className={`px-2 py-0.5 rounded font-data text-[10px] font-bold ${SIGNAL_COLOR[junction.recommendedSignal] || SIGNAL_COLOR.GREEN}`}>
-              {junction.recommendedSignal}
+            <span className="text-xs font-semibold text-slate-700">
+              {junction.currentPhase || junction.phase || 'Current phase'}
+            </span>
+            <span className="text-xs font-semibold text-slate-700">
+              {junction.remainingTime ?? '—'} seconds remaining
             </span>
           </div>
-          <div className="bg-[#141A20] rounded-lg p-2.5 border border-[#1E2530] text-[10px] text-[#8A939B]">
-            {junction.signalReason}
+          <div className="bg-slate-50 rounded-lg p-2.5 border border-slate-200 text-xs text-slate-700">
+            <span className="font-semibold">Why this signal is active: </span>
+            {junction.signalReason || 'Current phase follows the active signal plan.'}
           </div>
         </div>
 
@@ -247,10 +277,10 @@ export const JunctionPanel = ({ junction, onClose }) => {
 };
 
 // ── Build a Leaflet divIcon for a junction marker ─────────────────────────────
-function makeJunctionIcon(j, isAmbulanceCurrent) {
+function makeJunctionIcon(j, isAmbulanceCurrent, isSelected) {
   const signal = String(j.signal || j.currentPhase || 'RED').toUpperCase();
   const activeColor = signal === 'GREEN' ? '#16a34a' : signal === 'YELLOW' ? '#d97706' : '#dc2626';
-  const size = isAmbulanceCurrent ? 21 : 18;
+  const size = isAmbulanceCurrent || isSelected ? 21 : 18;
   const red = signal === 'RED' || signal === 'ALL_RED' ? '#ef4444' : '#fecaca';
   const amber = signal === 'YELLOW' ? '#f59e0b' : '#fde68a';
   const green = signal === 'GREEN' ? '#22c55e' : '#bbf7d0';
@@ -261,7 +291,7 @@ function makeJunctionIcon(j, isAmbulanceCurrent) {
       <div style="position:relative;display:flex;align-items:center;justify-content:center;">
         <div style="
           width:${size}px;height:${size * 1.45}px;border-radius:8px;
-          background:#17233c;border:2px solid ${isAmbulanceCurrent ? '#f97316' : '#ffffff'};
+          background:#17233c;border:2px solid ${isAmbulanceCurrent ? '#ef4444' : isSelected ? '#7c3aed' : '#ffffff'};
           box-shadow:0 2px 8px ${activeColor}80;cursor:pointer;
           display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
         ">
@@ -281,6 +311,9 @@ function makeJunctionIcon(j, isAmbulanceCurrent) {
           <div style="font-family:'JetBrains Mono',monospace;font-size:8px;color:${activeColor};margin-top:2px;">
             ${signal} · ${j.remainingTime ?? '—'}s
           </div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:7px;color:#475569;margin-top:1px;">
+            ${j.vehicles ?? '—'} vehicles · ${j.status || 'UNKNOWN'}
+          </div>
         </div>
       </div>
     `,
@@ -289,10 +322,48 @@ function makeJunctionIcon(j, isAmbulanceCurrent) {
   });
 }
 
+function makeCorridorJunctionIcon(junction, signal, countdown, isCurrent, isNext, isSelected) {
+  const normalizedSignal = String(signal || 'RED').toUpperCase();
+  const signalColor = normalizedSignal.includes('GREEN')
+    ? '#22C55E'
+    : normalizedSignal.includes('YELLOW') || normalizedSignal.includes('AMBER')
+      ? '#F59E0B'
+      : '#EF4444';
+  const borderColor = isCurrent ? '#EF4444' : isSelected ? '#7C3AED' : isNext ? '#F59E0B' : '#FFFFFF';
+  const id = String(junction.id || '').replace(/[&<>"']/g, character => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[character]);
+
+  return L.divIcon({
+    className: 'emergency-corridor-junction-icon',
+    html: `
+      <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
+        <span style="
+          border:1px solid #E2E8F0;border-radius:5px;background:#FFFFFF;
+          box-shadow:0 1px 4px rgba(23,37,84,.18);color:#172554;
+          font:800 9px/14px Inter,system-ui,sans-serif;padding:0 5px;white-space:nowrap;
+        ">${id}</span>
+        <span style="
+          align-items:center;background:${signalColor};border:3px solid ${borderColor};
+          border-radius:50%;box-shadow:0 1px 5px rgba(15,23,42,.35);
+          color:#FFFFFF;display:flex;font:800 8px/1 Inter,system-ui,sans-serif;
+          height:22px;justify-content:center;width:22px;
+        ">${countdown ?? '—'}</span>
+      </div>
+    `,
+    iconSize: [38, 42],
+    iconAnchor: [19, 37],
+  });
+}
+
 // ── Build a Leaflet divIcon for the ambulance ─────────────────────────────────
 function makeAmbulanceIcon(ambulanceId) {
   return L.divIcon({
-    className: '',
+    className: 'ambulance-marker-icon',
     html: `
       <div style="position:relative;display:flex;align-items:center;justify-content:center;">
         <div style="
@@ -332,15 +403,41 @@ const AmbulanceMarker = ({ position, ambulanceId }) => {
 };
 
 // ── Geographic Map using React Leaflet + OpenStreetMap tiles ──────────────────
-export const GeoMap = ({ onSelectJunction, selectedRoute = null, showAmbulance = false, showJunctionMarkers = true }) => {
+export const GeoMap = ({
+  onSelectJunction,
+  selectedRoute = null,
+  showAmbulance = false,
+  showJunctionMarkers = true,
+  selectedJunctionId = null,
+  emergencyCorridorOnly = false,
+  corridorJunctionIds = EMPTY_CORRIDOR_JUNCTIONS,
+  showJunctionPanel = true,
+}) => {
   const { junctions, ambulance, tomtomStatus, incidents = [] } = useTraffic();
   const [selectedJunction, setSelectedJunction] = useState(null);
+  const activeAmbulance = Boolean(showAmbulance && (ambulance.active || ambulance.emergencyActive));
+
+  const corridorIds = useMemo(() => {
+    if (!emergencyCorridorOnly) return [];
+    const ids = corridorJunctionIds.length
+      ? corridorJunctionIds
+      : ambulance.routeJunctions?.length
+        ? ambulance.routeJunctions
+        : DEFAULT_CORRIDOR_JUNCTIONS;
+    return [...new Set(ids.filter(id => typeof id === 'string' && id))];
+  }, [emergencyCorridorOnly, corridorJunctionIds, ambulance.routeJunctions]);
+  const corridorIdSet = useMemo(() => new Set(corridorIds), [corridorIds]);
+  const visibleJunctions = useMemo(
+    () => emergencyCorridorOnly ? junctions.filter(junction => corridorIdSet.has(junction.id)) : junctions,
+    [emergencyCorridorOnly, junctions, corridorIdSet],
+  );
 
   // Always derive live selected junction object from junctions array
   const currentSelectedJunction = useMemo(() => {
-    if (!selectedJunction) return null;
-    return junctions.find(j => j.id === selectedJunction.id) || selectedJunction;
-  }, [selectedJunction, junctions]);
+    const selectedId = selectedJunctionId || selectedJunction?.id;
+    if (!selectedId) return null;
+    return junctions.find(j => j.id === selectedId) || selectedJunction;
+  }, [selectedJunction, selectedJunctionId, junctions]);
 
   // Build lookup map for junctions by ID
   const junctionMap = useMemo(() => {
@@ -373,41 +470,58 @@ export const GeoMap = ({ onSelectJunction, selectedRoute = null, showAmbulance =
     }).filter(Boolean);
   }, [junctionMap]);
 
+  const corridorNetworkPolylines = useMemo(() => {
+    if (!emergencyCorridorOnly || activeAmbulance) return [];
+    const routeEdges = new Set();
+    corridorIds.slice(1).forEach((id, index) => {
+      const previousId = corridorIds[index];
+      routeEdges.add(`${previousId}-${id}`);
+      routeEdges.add(`${id}-${previousId}`);
+    });
+    return roadPolylines
+      .filter(road => routeEdges.has(road.key))
+      .map(road => ({ ...road, color: '#475569', weight: 4, opacity: 0.75 }));
+  }, [emergencyCorridorOnly, activeAmbulance, corridorIds, roadPolylines]);
+  const visibleRoadPolylines = emergencyCorridorOnly ? corridorNetworkPolylines : roadPolylines;
+
   // ── Selected route overlay ──────────────────────────────────────────────────
   const routePolyline = useMemo(() => {
-    if (!selectedRoute?.path) return null;
+    if (emergencyCorridorOnly || !selectedRoute?.path) return null;
     const coords = selectedRoute.path
       .map(id => junctionMap[id])
       .filter(Boolean)
       .map(j => [toNum(j.lat), toNum(j.lng)])
       .filter(([lat, lng]) => lat && lng);
     return coords.length > 1 ? coords : null;
-  }, [selectedRoute, junctionMap]);
+  }, [emergencyCorridorOnly, selectedRoute, junctionMap]);
 
   // ── Ambulance corridor overlay ──────────────────────────────────────────────
   const ambCorridorCoords = useMemo(() => {
-    if (!showAmbulance || !ambulance.active) return null;
+    if (!activeAmbulance) return null;
     const routePositions = (Array.isArray(ambulance.route) ? ambulance.route : [])
       .map(toPosition)
       .filter(Boolean);
     if (routePositions.length > 1) return routePositions;
-    const coords = ambulance.routeJunctions
+    const coords = corridorIds
       .map(id => junctionMap[id])
       .filter(Boolean)
       .map(j => [toNum(j.lat), toNum(j.lng)])
       .filter(([lat, lng]) => lat && lng);
     return coords.length > 1 ? coords : null;
-  }, [showAmbulance, ambulance, junctionMap]);
+  }, [activeAmbulance, ambulance, corridorIds, junctionMap]);
 
   const destinationPosition = useMemo(() => {
     const destination = ambulance.destinationLocation;
     const directPosition = toPosition(destination);
     if (directPosition) return directPosition;
     if (ambCorridorCoords?.length) return ambCorridorCoords[ambCorridorCoords.length - 1];
+    const destinationJunction = junctionMap[corridorIds[corridorIds.length - 1]];
+    if (destinationJunction) return [toNum(destinationJunction.lat), toNum(destinationJunction.lng)];
     return null;
-  }, [ambulance.destinationLocation, ambCorridorCoords]);
+  }, [ambulance.destinationLocation, ambCorridorCoords, corridorIds, junctionMap]);
 
   const incidentMarkers = useMemo(() => {
+    if (emergencyCorridorOnly) return [];
     const providerIncidents = Array.isArray(tomtomStatus?.incidents) ? tomtomStatus.incidents : [];
     const eventIncidents = incidents
       .filter(event => /INCIDENT|ROAD_BLOCK|COLLISION|HAZARD/i.test(`${event.category || ''} ${event.title || ''}`))
@@ -422,32 +536,89 @@ export const GeoMap = ({ onSelectJunction, selectedRoute = null, showAmbulance =
     return [...providerIncidents, ...eventIncidents]
       .map(incident => ({ incident, position: toPosition(incident) }))
       .filter(item => item.position);
-  }, [tomtomStatus, incidents, junctionMap]);
+  }, [emergencyCorridorOnly, tomtomStatus, incidents, junctionMap]);
 
   // ── Current ambulance position ──────────────────────────────────────────────
   const ambPosition = useMemo(() => {
-    if (!showAmbulance || (!ambulance.active && !ambulance.emergencyActive)) return null;
+    if (!activeAmbulance) return null;
     if (toNum(ambulance.latitude) && toNum(ambulance.longitude)) {
       return [toNum(ambulance.latitude), toNum(ambulance.longitude)];
     }
-    const currentId = ambulance.routeJunctions ? ambulance.routeJunctions[ambulance.currentJunctionIndex] : 'J1';
+    const currentId = corridorIds[Number(ambulance.currentJunctionIndex) || 0] || corridorIds[0] || 'J1';
     const j = junctionMap[currentId];
     if (!j) return null;
     const lat = toNum(j.lat), lng = toNum(j.lng);
     return (lat && lng) ? [lat, lng] : null;
-  }, [showAmbulance, ambulance, junctionMap]);
+  }, [activeAmbulance, ambulance.currentJunctionIndex, ambulance.latitude, ambulance.longitude, corridorIds, junctionMap]);
+
+  const corridorSignalStates = useMemo(() => {
+    if (!emergencyCorridorOnly) return EMPTY_SIGNAL_STATES;
+    const currentId = ambulance.currentJunctionId
+      || corridorIds[Number(ambulance.currentJunctionIndex) || 0];
+    const routeCurrentIndex = corridorIds.indexOf(currentId);
+    const currentIndex = routeCurrentIndex >= 0
+      ? routeCurrentIndex
+      : Number(ambulance.currentJunctionIndex) || 0;
+    return Object.fromEntries(visibleJunctions.map(junction => {
+      const junctionState = ambulance.junctionStatus?.[junction.id] || {};
+      const originalSignal = ambulance.normalSignalStates?.[junction.id];
+      const restoredSignal = typeof originalSignal === 'string'
+        ? originalSignal
+        : originalSignal?.signal ?? originalSignal?.currentPhase;
+      const routeIndex = corridorIds.indexOf(junction.id);
+      const passed = routeIndex >= 0 && (
+        routeIndex < currentIndex
+        || ['PASSED', 'CLEARED'].includes(String(junctionState.status || '').toUpperCase())
+      );
+      return [junction.id, passed && restoredSignal
+        ? restoredSignal
+        : junction.signal || junction.currentPhase || 'RED'];
+    }));
+  }, [
+    emergencyCorridorOnly,
+    visibleJunctions,
+    ambulance.currentJunctionId,
+    ambulance.currentJunctionIndex,
+    ambulance.junctionStatus,
+    ambulance.normalSignalStates,
+    corridorIds,
+  ]);
 
   // ── Junction marker icons (memoised per status + ambulance state) ───────────
   const junctionIcons = useMemo(() => {
     const icons = {};
-    junctions.forEach(j => {
-      const isAmbCurrent = showAmbulance && ambulance.active &&
-        ambulance.routeJunctions.includes(j.id) &&
-        ambulance.routeJunctions[ambulance.currentJunctionIndex] === j.id;
-      icons[j.id] = makeJunctionIcon(j, isAmbCurrent);
+    const currentAmbulanceJunctionId = ambulance.currentJunctionId
+      || corridorIds[Number(ambulance.currentJunctionIndex) || 0];
+    const currentIndex = Math.max(0, corridorIds.indexOf(currentAmbulanceJunctionId));
+    const nextAmbulanceJunctionId = ambulance.nextJunctionId || corridorIds[currentIndex + 1];
+    visibleJunctions.forEach(junction => {
+      const isAmbCurrent = activeAmbulance && currentAmbulanceJunctionId === junction.id;
+      const isNext = activeAmbulance && nextAmbulanceJunctionId === junction.id;
+      const isSelected = (selectedJunctionId || selectedJunction?.id) === junction.id;
+      icons[junction.id] = emergencyCorridorOnly
+        ? makeCorridorJunctionIcon(
+            junction,
+            corridorSignalStates[junction.id],
+            junction.remainingTime,
+            isAmbCurrent,
+            isNext,
+            isSelected,
+          )
+        : makeJunctionIcon(junction, isAmbCurrent, isSelected);
     });
     return icons;
-  }, [junctions, showAmbulance, ambulance]);
+  }, [
+    visibleJunctions,
+    emergencyCorridorOnly,
+    activeAmbulance,
+    ambulance.currentJunctionId,
+    ambulance.nextJunctionId,
+    ambulance.currentJunctionIndex,
+    corridorIds,
+    corridorSignalStates,
+    selectedJunctionId,
+    selectedJunction?.id,
+  ]);
 
   const handleMarkerClick = (j) => {
     setSelectedJunction(j);
@@ -458,14 +629,25 @@ export const GeoMap = ({ onSelectJunction, selectedRoute = null, showAmbulance =
     <div className="relative w-full h-full">
       {/* React Leaflet map centered on Chennai, Tamil Nadu */}
       <MapContainer
-        center={[13.0827, 80.2707]}
-        zoom={12.5}
+        center={CHENNAI_MAP_CENTER}
+        zoom={CHENNAI_MAP_ZOOM}
+        minZoom={CHENNAI_MAP_MIN_ZOOM}
+        maxZoom={CHENNAI_MAP_MAX_ZOOM}
+        maxBounds={CHENNAI_JUNCTION_BOUNDS}
+        maxBoundsViscosity={1}
         scrollWheelZoom={true}
+        inertia={false}
+        bounceAtZoomLimits={false}
         zoomControl={true}
+        dragging={true}
+        zoomAnimation={false}
+        fadeAnimation={false}
+        markerZoomAnimation={false}
         attributionControl={true}
         className="w-full h-full rounded-xl"
-        style={{ background: '#EEF0F7' }}
+        style={{ background: '#F1F5F9' }}
       >
+        <MapBoundsController />
         {/* Official OpenStreetMap raster tiles */}
         <TileLayer
           url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -474,7 +656,7 @@ export const GeoMap = ({ onSelectJunction, selectedRoute = null, showAmbulance =
         />
 
         {/* Road connection polylines on top of OSM base layer */}
-        {roadPolylines.map(road => (
+        {visibleRoadPolylines.map(road => (
           <Polyline
             key={road.key}
             positions={road.positions}
@@ -491,7 +673,7 @@ export const GeoMap = ({ onSelectJunction, selectedRoute = null, showAmbulance =
         )}
 
         {/* Ambulance corridor overlay */}
-        {ambCorridorCoords && (
+        {activeAmbulance && ambCorridorCoords && (
           <Polyline
             positions={ambCorridorCoords}
             pathOptions={{ color: '#ef4444', weight: 5, opacity: 0.95, dashArray: '6 3' }}
@@ -499,7 +681,7 @@ export const GeoMap = ({ onSelectJunction, selectedRoute = null, showAmbulance =
         )}
 
         {/* Junction markers with real Chennai names (rendered only when showJunctionMarkers is true) */}
-        {showJunctionMarkers && junctions.map(j => {
+        {showJunctionMarkers && visibleJunctions.map(j => {
           const lat = toNum(j.lat);
           const lng = toNum(j.lng);
           if (!lat || !lng) return null;
@@ -513,7 +695,10 @@ export const GeoMap = ({ onSelectJunction, selectedRoute = null, showAmbulance =
               <Tooltip direction="top">
                 <strong>{j.name}</strong><br />
                 Phase: {j.currentPhase || j.signal}<br />
-                Countdown: {j.remainingTime ?? '—'}s
+                Signal: {emergencyCorridorOnly ? corridorSignalStates[j.id] : j.signal || 'RED'} · {j.remainingTime ?? '—'}s<br />
+                {emergencyCorridorOnly
+                  ? `Corridor status: ${ambulance.junctionStatus?.[j.id]?.status || 'NORMAL'}`
+                  : `Traffic: ${j.vehicles ?? '—'} vehicles · ${j.status || 'UNKNOWN'}`}
               </Tooltip>
             </Marker>
           );
@@ -521,14 +706,14 @@ export const GeoMap = ({ onSelectJunction, selectedRoute = null, showAmbulance =
 
         {/* Ambulance marker — now uses live ambulance ID */}
         {ambPosition && <AmbulanceMarker position={ambPosition} ambulanceId={ambulance.id || 'AMB-000'} />}
-        {showAmbulance && ambulance.active && destinationPosition && (
+        {activeAmbulance && destinationPosition && (
           <Marker position={destinationPosition} icon={makeDestinationIcon()}>
             <Tooltip direction="top">
               Destination: {ambulance.destination || 'Hospital'}
             </Tooltip>
           </Marker>
         )}
-        {incidentMarkers.map(({ incident, position }, index) => (
+        {!emergencyCorridorOnly && incidentMarkers.map(({ incident, position }, index) => (
           <CircleMarker
             key={incident.id || incident.incidentId || `${position.join('-')}-${index}`}
             center={position}
@@ -546,34 +731,60 @@ export const GeoMap = ({ onSelectJunction, selectedRoute = null, showAmbulance =
       {/* Map source badge */}
       <div className="absolute bottom-3 left-3 z-[800] flex items-center gap-2">
         <span className="badge-static">Map: © OpenStreetMap (Chennai, TN)</span>
-        <span className="badge-sim">Center: [13.0827, 80.2707]</span>
+        {!emergencyCorridorOnly && <span className="badge-sim">Center: [13.0827, 80.2707]</span>}
       </div>
 
       {/* Legend */}
-      <div className="absolute top-3 left-3 z-[800] bg-white/95 backdrop-blur-sm border border-slate-200 rounded-lg p-3 shadow-lg">
-        <div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-2">Map legend</div>
-        {[
-          ['#16a34a', 'Green signal'],
-          ['#d97706', 'Amber signal'],
-          ['#dc2626', 'Red signal'],
-          ['#7c3aed', 'Hospital destination'],
-          ['#ef4444', 'Incident'],
-        ].map(([color, label]) => (
-          <div key={label} className="flex items-center gap-2 mb-1">
-            <div className="w-2.5 h-2.5 rounded-full" style={{ background: color }} />
-            <span className="text-[9px] text-slate-600 font-medium">{label}</span>
-          </div>
-        ))}
-        {showAmbulance && ambulance.active && (
-          <div className="flex items-center gap-2 mt-2 pt-2 border-t border-[#1E2530]">
-            <div className="w-2.5 h-2.5 rounded-full bg-orange-500 animate-pulse" />
-            <span className="text-[9px] text-orange-400 font-bold">EMERGENCY CORRIDOR</span>
-          </div>
-        )}
-      </div>
+      {emergencyCorridorOnly ? (
+        <div className="absolute bottom-3 right-3 z-[800] flex items-center gap-3 rounded-lg border border-slate-200 bg-white/95 px-2.5 py-2 shadow-sm backdrop-blur-sm">
+          <span className="flex items-center gap-1 text-[9px] font-semibold text-slate-700">
+            <span className={`h-0 w-4 border-t-2 ${activeAmbulance ? 'border-dashed border-red-500' : 'border-slate-600'}`} />
+            Route
+          </span>
+          {[
+            ['#22C55E', 'Green'],
+            ['#F59E0B', 'Amber'],
+            ['#EF4444', 'Red'],
+          ].map(([color, label]) => (
+            <span key={label} className="flex items-center gap-1 text-[9px] font-medium text-slate-700">
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />
+              {label}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <div className="absolute left-3 top-3 z-[800] rounded-lg border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur-sm">
+          <div className="mb-2 text-[9px] font-bold uppercase tracking-wider text-slate-500">Map legend</div>
+          {[
+            ['#475569', 'Road network'],
+            ['#16a34a', 'Green signal'],
+            ['#d97706', 'Amber signal'],
+            ['#dc2626', 'Red signal'],
+            ['#7c3aed', 'Hospital destination'],
+            ['#ef4444', 'Incident'],
+          ].map(([color, label]) => (
+            <div key={label} className="mb-1 flex items-center gap-2">
+              <div className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />
+              <span className="text-[9px] font-medium text-slate-600">{label}</span>
+            </div>
+          ))}
+          {activeAmbulance && (
+            <>
+              <div className="mt-2 flex items-center gap-2 border-t border-[#1E2530] pt-2">
+                <span className="text-sm" aria-hidden="true">🚑</span>
+                <span className="text-[9px] font-bold text-red-700">AMBULANCE · ACTIVE ROUTE</span>
+              </div>
+              <div className="mt-1 flex items-center gap-2">
+                <span className="h-0 w-4 border-t-2 border-dashed border-red-500" />
+                <span className="text-[9px] font-medium text-slate-600">Emergency route</span>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Junction detail panel */}
-      {currentSelectedJunction && (
+      {showJunctionPanel && currentSelectedJunction && (
         <JunctionPanel
           junction={currentSelectedJunction}
           onClose={() => setSelectedJunction(null)}

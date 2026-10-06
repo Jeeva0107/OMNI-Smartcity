@@ -34,7 +34,6 @@ export const CityMap = ({ onSelectJunction }) => {
     <div className="relative w-full h-full bg-[#090B0D] rounded-xl border border-[#242A30] overflow-hidden flex flex-col select-none shadow-2xl">
       <GeoMap
         onSelectJunction={onSelectJunction}
-        showAmbulance={true}
         selectedRoute={selectedRoute}
       />
     </div>

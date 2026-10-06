@@ -1,11 +1,57 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Activity, Ambulance, MapPin, Pause, Play, RotateCcw, ShieldCheck, StopCircle } from 'lucide-react';
 import { useTraffic } from '../../context/TrafficContext';
-import { SourceBadge } from '../map/GeoMap';
-import { GeoMap } from '../map/GeoMap';
 import { emergencyService } from '../../services/apiServices';
-import {
-  AlertTriangle, Ambulance, CheckCircle2, Clock, Navigation, Play, Pause, RotateCcw, ShieldCheck, Siren, Sparkles, Zap, MapPin, Compass, Layers, Radio, XCircle
-} from 'lucide-react';
+import { INITIAL_ROUTES } from '../../data/mockData';
+import { GeoMap } from '../map/GeoMap';
+
+const signalStyles = {
+  GREEN: 'border-green-200 bg-green-50 text-green-800',
+  'GREEN FOR AMBULANCE': 'border-green-200 bg-green-50 text-green-800',
+  YELLOW: 'border-amber-200 bg-amber-50 text-amber-800',
+  AMBER: 'border-amber-200 bg-amber-50 text-amber-800',
+  PREPARING: 'border-amber-200 bg-amber-50 text-amber-800',
+  RED: 'border-red-200 bg-red-50 text-red-800',
+  ALL_RED: 'border-red-200 bg-red-100 text-red-900',
+  CLEARED: 'border-green-200 bg-green-50 text-green-800',
+  NORMAL: 'border-slate-200 bg-slate-50 text-slate-700',
+};
+
+const signalColor = signal => {
+  const normalized = String(signal || 'RED').toUpperCase();
+  return normalized === 'GREEN' ? '#22C55E' : normalized === 'YELLOW' || normalized === 'AMBER' ? '#F59E0B' : '#EF4444';
+};
+
+const getJunctionSignalDetails = ({ ambulance, junction, junctionId, index, currentIndex, currentJunctionId, nextJunctionId, isActive }) => {
+  const junctionState = ambulance.junctionStatus?.[junctionId] || {};
+  const normalSignal = ambulance.normalSignalStates?.[junctionId];
+  const restoredSignal = typeof normalSignal === 'string' ? normalSignal : normalSignal?.signal;
+  const passed = index < currentIndex || ['PASSED', 'CLEARED'].includes(String(junctionState.status || '').toUpperCase());
+  const isCurrent = currentJunctionId === junctionId;
+  const isNext = nextJunctionId === junctionId;
+  const signal = passed && restoredSignal
+    ? restoredSignal
+    : junction?.signal || junctionState.signal || 'RED';
+  const state = !isActive
+    ? 'NORMAL'
+    : passed
+      ? 'CLEARED'
+      : isCurrent && String(signal).toUpperCase().includes('GREEN')
+        ? 'GREEN FOR AMBULANCE'
+        : isCurrent || isNext
+          ? 'PREPARING'
+          : 'NORMAL';
+
+  return {
+    signal,
+    state,
+    phase: junctionState.phase || junction?.currentPhase || signal,
+    countdown: junctionState.remainingTime ?? junction?.remainingTime ?? '—',
+    passed,
+    isCurrent,
+    isNext,
+  };
+};
 
 export const EmergencyCorridorTab = () => {
   const {
@@ -14,297 +60,370 @@ export const EmergencyCorridorTab = () => {
     advanceAmbulanceStep,
     pauseAmbulance,
     resetAmbulance,
+    endAmbulanceTrip,
     startEmergency,
     junctions,
+    lastTripSummary,
     wsConnected,
-    tomtomStatus
+    backendOnline,
+    backendError,
   } = useTraffic();
-
-  const [showApprovalModal, setShowApprovalModal] = useState(false);
-  const [routesList, setRoutesList] = useState([]);
+  const [routeOptions, setRouteOptions] = useState([]);
   const [selectedRouteId, setSelectedRouteId] = useState(ambulance.routeId || 'ROUTE-A');
+  const [selectedJunctionId, setSelectedJunctionId] = useState('');
 
-  // Fetch route alternatives
   useEffect(() => {
+    let cancelled = false;
     emergencyService.getEmergencyRoutes('J1', 'J7')
-      .then(res => { if (Array.isArray(res) && res.length) setRoutesList(res); })
-      .catch(() => {});
+      .then(routes => {
+        if (!cancelled && Array.isArray(routes) && routes.length) setRouteOptions(routes);
+      })
+      .catch(error => console.warn('[EmergencyCorridor] Route alternatives unavailable:', error.message));
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (ambulance.routeId) setSelectedRouteId(ambulance.routeId);
   }, [ambulance.routeId]);
 
-  const routeJunctionsList = ambulance.routeJunctions || ['J1', 'J8', 'J2', 'J7'];
+  const isActive = Boolean(ambulance.active);
+  const isSimulatedTrip = ambulance.gpsMode === 'SIMULATED';
+  const configuredRoute = useMemo(
+    () => routeOptions.find(route => route.id === selectedRouteId)
+      || INITIAL_ROUTES.find(route => route.id === selectedRouteId)
+      || INITIAL_ROUTES[0],
+    [routeOptions, selectedRouteId],
+  );
+  const routeJunctions = useMemo(() => {
+    const activeRoute = isActive && Array.isArray(ambulance.routeJunctions)
+      ? ambulance.routeJunctions
+      : [];
+    const ids = activeRoute.length ? activeRoute : configuredRoute?.path || [];
+    return ids.filter(id => junctions.some(junction => junction.id === id));
+  }, [isActive, ambulance.routeJunctions, configuredRoute, junctions]);
+  const currentIndex = Math.max(0, Number(ambulance.currentJunctionIndex) || 0);
+  const currentJunctionId = isActive
+    ? ambulance.currentJunctionId || routeJunctions[currentIndex] || ''
+    : '';
+  const currentRouteIndex = currentJunctionId ? routeJunctions.indexOf(currentJunctionId) : -1;
+  const nextJunctionId = isActive
+    ? ambulance.nextJunctionId || routeJunctions[(currentRouteIndex >= 0 ? currentRouteIndex : currentIndex) + 1] || ''
+    : '';
+  const focusedJunctionId = selectedJunctionId || currentJunctionId || nextJunctionId;
+  const focusedJunction = junctions.find(junction => junction.id === focusedJunctionId);
+  const focusedRouteIndex = routeJunctions.indexOf(focusedJunctionId);
+  const focusedSignal = getJunctionSignalDetails({
+    ambulance,
+    junction: focusedJunction,
+    junctionId: focusedJunctionId,
+    index: focusedRouteIndex < 0 ? 0 : focusedRouteIndex,
+    currentIndex: currentRouteIndex < 0 ? currentIndex : currentRouteIndex,
+    currentJunctionId,
+    nextJunctionId,
+    isActive,
+  });
+  const backendStatus = backendOnline && wsConnected && !backendError
+    ? 'LIVE BACKEND CONNECTED'
+    : isSimulatedTrip && !backendOnline
+      ? 'LOCAL DEMO MODE'
+      : backendError
+        ? 'BACKEND ERROR'
+        : 'CONNECTING TO BACKEND';
+  const signalChanges = (Array.isArray(ambulance.signalChanges) ? ambulance.signalChanges : [])
+    .filter(change => routeJunctions.includes(change.junctionId));
 
-  // Debug logging as required by specification
   useEffect(() => {
-    console.log('[EmergencyCorridor] LIVE AMBULANCE:', {
-      id: ambulance?.id,
-      latitude: ambulance?.latitude,
-      longitude: ambulance?.longitude,
-      active: ambulance?.active
-    });
-  }, [ambulance]);
-
-  // Determine if ambulance is live active
-  const isLiveActive = Boolean(ambulance && ambulance.active);
-  const ambulanceId = isLiveActive ? (ambulance.id || 'AMB-ACTIVE') : 'NO_ACTIVE_AMBULANCE';
-  const dataSource = isLiveActive ? (ambulance.source || ambulance.dataSource || 'LIVE BACKEND') : 'STANDBY';
+    setSelectedJunctionId(currentJunctionId || nextJunctionId || '');
+  }, [currentJunctionId]);
 
   return (
-    <div className="light-dashboard flex-1 overflow-y-auto p-6 space-y-6 bg-[#F5F4FA]">
-
-      {/* TOP EMERGENCY CORRIDOR HEADER */}
-      <div className="bg-violet-100 p-5 rounded-xl border border-violet-200 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4 shadow-sm">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-red-500/20 border border-red-500/50 flex items-center justify-center animate-pulse">
-            <Ambulance className="w-7 h-7 text-red-400" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-bold uppercase ${isLiveActive ? 'bg-red-100 text-red-700 animate-pulse' : 'bg-slate-100 text-slate-600'}`}>
-                {isLiveActive ? 'EMERGENCY CORRIDOR ACTIVE' : 'EMERGENCY CORRIDOR STANDBY'}
-              </span>
-              <SourceBadge source={dataSource} label={dataSource === 'LIVE BACKEND' ? 'LIVE GPS' : 'STANDBY'} />
-              <span className="text-xs text-[#737B82] font-mono">{isLiveActive ? (ambulance.callsign || ambulanceId) : 'NO ACTIVE AMBULANCE'}</span>
-            </div>
-            <h2 className="text-lg font-extrabold text-slate-900 mt-0.5">
-              AMBULANCE CORRIDOR ROUTE &amp; GREEN-WAVE CLEARANCE
-            </h2>
-            <p className="text-xs text-slate-600">
-              {isLiveActive ? (
-                <>Active Trip: <strong className="text-violet-800">{ambulanceId}</strong> • Position Source: <strong className="text-slate-900">Live Backend GPS</strong> • Destination: <strong className="text-emerald-700">{ambulance.destination || 'Rajiv Gandhi Govt General Hospital'}</strong></>
-              ) : (
-                <>No Active Emergency Trip • Position Source: <strong className="text-white">Standby</strong> • Destination: <strong className="text-emerald-400">Rajiv Gandhi Govt General Hospital</strong></>
-              )}
-            </p>
-          </div>
+    <div className="light-dashboard flex-1 min-h-0 overflow-y-auto p-4 md:p-5">
+      <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-slate-900">Emergency corridor</h1>
+          <p className="mt-1 text-sm text-slate-500">Shared ambulance trip, route, junction priority and signal status</p>
         </div>
-
-        {/* DRIVER / CONTROL ACTIONS */}
-        <div className="flex items-center gap-2">
-          {!isLiveActive && (
-            <button
-              onClick={() => startEmergency(ambulance?.id || 'AMB-204', 'J1', 'J7', selectedRouteId)}
-              className="px-3 py-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/40 font-bold text-xs transition-all flex items-center gap-1.5"
-            >
-              <Play className="w-3.5 h-3.5 fill-current" />
-              <span>Start Corridor</span>
-            </button>
-          )}
-
-          {isLiveActive && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`rounded-full border px-2.5 py-1.5 text-[9px] font-bold tracking-wide ${
+            backendStatus === 'LIVE BACKEND CONNECTED'
+              ? 'border-green-200 bg-green-50 text-green-800'
+              : backendStatus === 'LOCAL DEMO MODE'
+                ? 'border-amber-200 bg-amber-50 text-amber-800'
+                : 'border-slate-200 bg-white text-slate-700'
+          }`}>
+            {backendStatus}
+          </span>
+          {isActive && (
             <>
+              <span className="rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] font-bold tracking-wide text-red-700">
+                EMERGENCY CORRIDOR ACTIVE
+              </span>
+              {isSimulatedTrip && (
+                <>
+                  <button
+                    onClick={pauseAmbulance}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                  >
+                    {ambulance.status === 'PAUSED' ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
+                    {ambulance.status === 'PAUSED' ? 'Resume' : 'Pause'}
+                  </button>
+                  <button
+                    onClick={advanceAmbulanceStep}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-700"
+                  >
+                    <MapPin className="h-4 w-4" />
+                    Next GPS step
+                  </button>
+                  <button
+                    onClick={resetAmbulance}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    Reset demo
+                  </button>
+                </>
+              )}
               <button
-                onClick={pauseAmbulance}
-                className="px-3 py-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/40 font-bold text-xs transition-all flex items-center gap-1.5"
+                onClick={endAmbulanceTrip}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50"
               >
-                <Pause className="w-3.5 h-3.5 fill-current" />
-                <span>{ambulance.status === 'PAUSED' ? 'Resume' : 'Pause'}</span>
+                <StopCircle className="h-4 w-4" />
+                End trip
               </button>
-
+            </>
+          )}
+          {!isActive && (
+            <>
+              <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
+                Demo route
+                <select
+                  value={selectedRouteId}
+                  onChange={event => setSelectedRouteId(event.target.value)}
+                  className="bg-transparent font-semibold text-slate-800 outline-none"
+                >
+                  {(routeOptions.length ? routeOptions : [{ id: 'ROUTE-A' }, { id: 'ROUTE-B' }]).map(route => (
+                    <option key={route.id} value={route.id}>{route.id}</option>
+                  ))}
+                </select>
+              </label>
               <button
-                onClick={resetAmbulance}
-                className="px-3 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40 font-bold text-xs transition-all flex items-center gap-1.5"
+                onClick={() => startEmergency(ambulance.id || 'AMB-204', 'J1', 'J7', selectedRouteId)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-700"
               >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Reset</span>
-              </button>
-
-              <button
-                onClick={advanceAmbulanceStep}
-                className="px-3.5 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-black font-extrabold text-xs transition-all shadow-glow flex items-center gap-1.5"
-              >
-                <Navigation className="w-3.5 h-3.5 fill-current" />
-                <span>Next GPS Step →</span>
+                <Play className="h-4 w-4" />
+                Start demo corridor
               </button>
             </>
           )}
         </div>
-      </div>
+      </header>
 
-      {isLiveActive && (
-        <div className="grid grid-cols-2 gap-4 rounded-xl border border-violet-200 bg-violet-50 p-4 shadow-sm md:grid-cols-4">
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Route progress</div>
-            <div className="mt-1 flex items-center gap-3">
-              <div className="h-2 flex-1 overflow-hidden rounded-full bg-violet-200">
-                <div className="h-full rounded-full bg-violet-600" style={{ width: `${Math.min(100, Math.max(0, Number(ambulance.routeProgress) || 0))}%` }} />
-              </div>
-              <strong className="font-data text-sm text-violet-900">{Math.round(ambulance.routeProgress || 0)}%</strong>
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_330px]">
+        <div className="relative h-[min(62vh,620px)] min-h-[420px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <GeoMap
+            showAmbulance={isActive}
+            showJunctionMarkers
+            emergencyCorridorOnly
+            corridorJunctionIds={routeJunctions}
+            selectedJunctionId={selectedJunctionId || currentJunctionId}
+            onSelectJunction={setSelectedJunctionId}
+            showJunctionPanel={false}
+          />
+          {!isActive && (
+            <div className="pointer-events-none absolute bottom-12 right-3 z-[800] rounded-lg border border-slate-200 bg-white/95 px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm">
+              No active emergency corridor
             </div>
-          </div>
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Speed</div>
-            <strong className="mt-1 block font-data text-sm text-slate-900">{ambulance.speed || 0} km/h</strong>
-          </div>
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Current junction</div>
-            <strong className="mt-1 block text-sm text-slate-900">{ambulance.currentJunctionId || '—'}</strong>
-          </div>
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Next junction · ETA</div>
-            <strong className="mt-1 block text-sm text-slate-900">{ambulance.nextJunctionId || '—'} · {ambulance.eta || '--:--'}</strong>
-          </div>
-        </div>
-      )}
-
-      {/* NO ACTIVE TRIP MESSAGE */}
-      {!isLiveActive && (
-        <div className="bg-[#14181C] px-4 py-3 rounded-lg border border-amber-500/30 text-xs text-amber-400 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Radio className="w-4 h-4 shrink-0" />
-            <span>
-              <strong>No Active Emergency Trip.</strong> Waiting for live ambulance app connection or simulation start.
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* SYSTEM NOTE REGARDING YOLO & GPS */}
-      <div className="bg-[#14181C] px-4 py-2.5 rounded-lg border border-[#242A30] text-[11px] text-[#8A939B] flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Radio className="w-4 h-4 text-cyan-400 shrink-0" />
-          <span>
-            <strong className="text-white">Telemetry Note:</strong> Ambulance tracking is driven strictly by GPS coordinates. YOLO11n computer vision detects general traffic flow, not the ambulance.
-          </span>
-        </div>
-        <SourceBadge source="DERIVED" label="GPS DUAL SYSTEM" />
-      </div>
-
-      {/* METRICS & POSITION SUMMARY */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
-        <div className="bg-[#14181C] p-4 rounded-xl border border-[#242A30]">
-          <div className="text-[10px] font-bold text-[#737B82] uppercase tracking-wider flex items-center gap-1">
-            <Compass className="w-3 h-3 text-cyan-400" /> Live GPS Position
-          </div>
-          <div className="text-sm font-mono font-bold text-white mt-1">
-            {isLiveActive && ambulance.latitude ? `${Number(ambulance.latitude).toFixed(4)}°N, ${Number(ambulance.longitude).toFixed(4)}°E` : '13.0067°N, 80.2020°E'}
-          </div>
-          <div className="text-[10px] mt-1 font-mono" style={{ color: isLiveActive ? '#10b981' : '#06b6d4' }}>
-            {isLiveActive ? 'LIVE BACKEND GPS' : 'Simulated Driver GPS'}
-          </div>
-        </div>
-
-        <div className="bg-[#14181C] p-4 rounded-xl border border-[#242A30]">
-          <div className="text-[10px] font-bold text-[#737B82] uppercase tracking-wider flex items-center gap-1">
-            <Clock className="w-3 h-3 text-emerald-400" /> Dynamic ETA
-          </div>
-          <div className="text-xl font-mono font-bold text-emerald-400 mt-1">{ambulance.eta || '08:42'}</div>
-          <div className="text-[10px] text-[#737B82] mt-1">TomTom flow-aware model</div>
-        </div>
-
-        <div className="bg-[#14181C] p-4 rounded-xl border border-[#242A30]">
-          <div className="text-[10px] font-bold text-[#737B82] uppercase tracking-wider flex items-center gap-1">
-            <Navigation className="w-3 h-3 text-amber-400" /> Distance Remaining
-          </div>
-          <div className="text-xl font-mono font-bold text-white mt-1">
-            {ambulance.distRemaining || '12.4'} <span className="text-xs font-normal">km</span>
-          </div>
-          <div className="text-[10px] text-amber-400 mt-1">To Hospital ER</div>
-        </div>
-
-        <div className="bg-[#14181C] p-4 rounded-xl border border-[#242A30]">
-          <div className="text-[10px] font-bold text-[#737B82] uppercase tracking-wider flex items-center gap-1">
-            <Layers className="w-3 h-3 text-purple-400" /> Corridor Route Path
-          </div>
-          <div className="text-xs font-mono font-bold text-amber-400 mt-1 truncate">
-            {routeJunctionsList.join(' → ')}
-          </div>
-          <div className="text-[10px] text-[#737B82] mt-1">Anna Salai Arterial</div>
-        </div>
-
-        <div className="bg-[#14181C] p-4 rounded-xl border border-emerald-500/30">
-          <div className="text-[10px] font-bold text-[#737B82] uppercase tracking-wider flex items-center gap-1">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Corridor Status
-          </div>
-          <div className="text-xs font-mono font-extrabold text-emerald-400 mt-1">
-            {isLiveActive ? (ambulance.corridorApproved ? 'APPROVED (ACTIVE)' : 'STANDBY PENDING') : 'INACTIVE'}
-          </div>
-          {isLiveActive && (
-            <button
-              onClick={() => toggleCorridorApproval(!ambulance.corridorApproved)}
-              className="mt-1 text-[9px] text-amber-400 underline font-bold"
-            >
-              {ambulance.corridorApproved ? 'Revoke Approval' : 'Approve Green-Wave'}
-            </button>
           )}
         </div>
-      </div>
 
-      {/* MAP & ROUTE JUNCTIONS CLEARANCE GRID */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+        <aside className="space-y-3">
+          <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${isActive ? 'bg-red-50 text-red-600' : 'bg-violet-50 text-violet-700'}`}>
+                  <Ambulance className="h-6 w-6" />
+                </span>
+                <div className="min-w-0">
+                  <h2 className="text-sm font-bold text-slate-900">EMERGENCY CORRIDOR</h2>
+                  <p className={`mt-0.5 text-[10px] font-bold ${isActive ? 'text-red-700' : 'text-slate-500'}`}>
+                    {isActive ? 'ACTIVE' : 'INACTIVE'}
+                  </p>
+                </div>
+              </div>
+              {isActive && (
+                <span className="shrink-0 rounded-full border border-red-200 bg-red-50 px-2 py-1 text-[9px] font-bold text-red-700">
+                  EMERGENCY CORRIDOR ACTIVE
+                </span>
+              )}
+            </div>
 
-        {/* MAP VIEWPORT (7 Cols) */}
-        <div className="col-span-1 xl:col-span-7 bg-[#0C0F13] rounded-xl border border-[#1A2028] h-[450px] relative overflow-hidden">
-          <GeoMap showAmbulance={true} />
-        </div>
+            {!isActive && <p className="mt-3 text-xs text-slate-600">No active emergency corridor</p>}
 
-        {/* UPCOMING JUNCTIONS & PREPARED ACTIONS (5 Cols) */}
-        <div className="col-span-1 xl:col-span-5 space-y-4 bg-[#14181C] p-4 rounded-xl border border-[#242A30] overflow-y-auto max-h-[450px]">
-          <div className="text-xs font-bold text-white uppercase tracking-wider flex items-center justify-between border-b border-[#242A30] pb-2">
-            <span>Route Congestion &amp; Signal Clearance</span>
-            <SourceBadge source={tomtomStatus?.status === 'TOMTOM_LIVE' ? 'TOMTOM_LIVE' : 'SIMULATED'} />
+            <dl className="mt-4 grid grid-cols-2 gap-2">
+              {[
+                { label: 'Ambulance ID', value: isActive ? ambulance.id || '—' : '—' },
+                { label: 'Destination', value: isActive ? ambulance.destination || '—' : '—' },
+                { label: 'ETA', value: isActive ? ambulance.eta || '—' : '—' },
+                { label: 'Speed', value: isActive ? `${ambulance.speed || 0} km/h` : '—' },
+                { label: 'Current junction', value: currentJunctionId || '—' },
+                { label: 'Next junction', value: nextJunctionId || '—' },
+                { label: 'Backend status', value: backendStatus },
+              ].map(metric => (
+                <div key={metric.label} className="min-w-0 rounded-lg bg-slate-50 p-2">
+                  <dt className="text-[9px] font-medium text-slate-500">{metric.label}</dt>
+                  <dd className="mt-0.5 truncate text-[11px] font-bold text-slate-900" title={metric.value}>{metric.value}</dd>
+                </div>
+              ))}
+            </dl>
+
+            <div className="mt-3">
+              <div className="mb-1 flex justify-between text-[10px] text-slate-500">
+                <span>Route progress</span>
+                <strong className="text-slate-800">{isActive ? Math.round(ambulance.routeProgress || 0) : 0}%</strong>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-violet-100">
+                <div
+                  className="h-full rounded-full bg-violet-600 transition-[width] duration-500"
+                  style={{ width: `${isActive ? Math.min(100, Math.max(0, Number(ambulance.routeProgress) || 0)) : 0}%` }}
+                />
+              </div>
+            </div>
+
+            {isActive && (
+              <>
+                <p className="mt-2 break-all font-data text-[10px] text-slate-600">
+                  Location: {ambulance.latitude ?? '—'}, {ambulance.longitude ?? '—'}
+                </p>
+                <button
+                  onClick={() => toggleCorridorApproval(!ambulance.corridorApproved)}
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800 hover:bg-violet-100"
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  {ambulance.corridorApproved ? 'Revoke corridor approval' : 'Approve corridor'}
+                </button>
+              </>
+            )}
+          </article>
+
+          {focusedJunction && (
+            <article className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-[9px] font-bold uppercase tracking-wide text-slate-500">Selected junction · {focusedJunction.id}</p>
+                  <h3 className="mt-0.5 truncate text-xs font-bold text-slate-900">{focusedJunction.name}</h3>
+                </div>
+                <span className={`rounded-full border px-2 py-1 text-[9px] font-bold ${signalStyles[focusedSignal.state] || signalStyles.NORMAL}`}>
+                  {focusedSignal.state}
+                </span>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-slate-700">
+                <span className="inline-flex items-center gap-1.5 font-semibold">
+                  <span className="h-3 w-3 rounded-full ring-2 ring-white shadow" style={{ background: signalColor(focusedSignal.signal) }} />
+                  {focusedSignal.signal}
+                </span>
+                <span>Phase: {focusedSignal.phase}</span>
+                <span>Countdown: {focusedSignal.countdown}s</span>
+              </div>
+            </article>
+          )}
+
+          {lastTripSummary && (
+            <article className="rounded-xl border border-green-200 bg-green-50 p-4">
+              <h2 className="text-xs font-bold text-green-800">Last trip ended</h2>
+              <p className="mt-1 text-xs text-green-800">
+                {lastTripSummary.ambulanceId || 'Ambulance'} · {lastTripSummary.destination || 'Destination not supplied'}
+              </p>
+              <p className="mt-1 font-data text-[10px] text-green-700">
+                Trip {lastTripSummary.tripId || '—'} · ETA at end {lastTripSummary.eta || '—'}
+              </p>
+            </article>
+          )}
+        </aside>
+      </section>
+
+      <section className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center gap-2">
+            <MapPin className="h-4 w-4 text-violet-700" />
+            <h2 className="text-sm font-bold text-slate-900">Junction timeline</h2>
           </div>
-
-          {isLiveActive ? (
-            <div className="space-y-3">
-              {routeJunctionsList.map((jId, idx) => {
-                const node = junctions.find(j => j.id === jId) || { id: jId, name: jId, speed: 32, status: 'SMOOTH' };
-                const isPassed = (ambulance.currentJunctionIndex || 0) > idx;
-                const isCurrent = ambulance.currentJunctionId
-                  ? ambulance.currentJunctionId === jId
-                  : (ambulance.currentJunctionIndex || 0) === idx;
-
+          {routeJunctions.length ? (
+            <div className="space-y-1.5">
+              {routeJunctions.map((junctionId, index) => {
+                const junction = junctions.find(item => item.id === junctionId);
+                const details = getJunctionSignalDetails({
+                  ambulance,
+                  junction,
+                  junctionId,
+                  index,
+                  currentIndex: currentRouteIndex >= 0 ? currentRouteIndex : currentIndex,
+                  currentJunctionId,
+                  nextJunctionId,
+                  isActive,
+                });
+                const selected = focusedJunctionId === junctionId;
                 return (
-                  <div
-                    key={jId}
-                    className={`p-3 rounded-lg border flex items-center justify-between transition-all ${
-                      isCurrent
-                        ? 'bg-red-500/10 border-red-500/50 shadow-glow'
-                        : isPassed
-                        ? 'bg-[#0E1114] border-[#1E2530] opacity-60'
-                        : 'bg-[#181D21] border-[#242A30]'
+                  <button
+                    key={junctionId}
+                    type="button"
+                    onClick={() => setSelectedJunctionId(junctionId)}
+                    aria-pressed={selected}
+                    className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition-colors ${
+                      details.isCurrent
+                        ? 'border-red-200 bg-red-50'
+                        : selected
+                          ? 'border-violet-200 bg-violet-50'
+                          : 'border-slate-100 bg-slate-50 hover:bg-slate-100'
                     }`}
                   >
-                    <div className="flex items-center gap-3">
-                      <span className={`w-6 h-6 rounded-full flex items-center justify-center font-mono font-bold text-xs ${
-                        isCurrent ? 'bg-red-500 text-white animate-pulse' : 'bg-[#242A30] text-[#8A939B]'
-                      }`}>
-                        {idx + 1}
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-bold text-white" style={{ background: signalColor(details.signal) }}>
+                        {index + 1}
                       </span>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-xs text-white">{node.name}</span>
-                          <span className="font-mono text-[9px] text-[#5A636B]">({node.id})</span>
-                        </div>
-                        <div className="text-[10px] text-[#737B82] mt-0.5">
-                          Speed: <span className="text-slate-900 font-mono font-bold">{node.speed || 30} km/h</span> • Signal: <span className="font-bold text-slate-900">{node.currentPhase || node.signal}</span> · <span className="font-data text-slate-600">{node.remainingTime ?? '—'}s</span>
-                        </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-semibold text-slate-900">{junctionId} · {junction?.name || 'Junction'}</p>
+                        <p className="mt-0.5 truncate text-[10px] text-slate-600">
+                          {details.phase} · {details.countdown}s · {details.passed ? 'Signal restored' : 'Signal phase'}
+                        </p>
                       </div>
                     </div>
+                    <span className={`shrink-0 rounded-full border px-2 py-1 text-[9px] font-bold ${signalStyles[details.state] || signalStyles.NORMAL}`}>
+                      {details.state}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-slate-500">Junction route will appear when a trip starts.</p>
+          )}
+        </article>
 
-                    <div className="text-right">
-                      <span className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold border ${
-                        isCurrent
-                          ? 'bg-red-500/20 text-red-400 border-red-500/40 animate-pulse'
-                          : isPassed
-                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                          : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                      }`}>
-                        {isCurrent ? 'CLEARING NOW' : isPassed ? 'PASSED' : 'PREPARED'}
-                      </span>
+        <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center gap-2">
+            <Activity className="h-4 w-4 text-violet-700" />
+            <h2 className="text-sm font-bold text-slate-900">Signal-change activity</h2>
+          </div>
+          {signalChanges.length ? (
+            <div className="max-h-72 space-y-2 overflow-y-auto">
+              {signalChanges.map((change, index) => {
+                const signal = change.signalState || change.newSignal || change.currentPhase || 'RED';
+                return (
+                  <div key={`${change.junctionId || 'signal'}-${change.timestamp || index}`} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2">
+                    <div>
+                      <p className="text-xs font-semibold text-slate-900">{change.junctionId || 'Junction'} · {change.status || 'UPDATED'}</p>
+                      <p className="mt-0.5 text-[10px] text-slate-500">{change.timestamp || 'Recent'} · countdown {change.remainingTime ?? '—'}s</p>
                     </div>
+                    <span className={`rounded-full border px-2 py-1 text-[9px] font-bold ${signalStyles[signal] || signalStyles.RED}`}>{signal}</span>
                   </div>
                 );
               })}
             </div>
           ) : (
-            <div className="text-center py-8 text-[#5A636B]">
-              <p className="text-sm font-mono">No active emergency trip.</p>
-              <p className="text-xs text-[#3D4850] mt-1">Start a trip to see junction clearance status.</p>
-            </div>
+            <p className="text-xs text-slate-500">Signal changes from the shared trip will appear here.</p>
           )}
-        </div>
-
-      </div>
+        </article>
+      </section>
     </div>
   );
 };

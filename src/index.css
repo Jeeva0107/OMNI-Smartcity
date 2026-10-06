@@ -5,12 +5,38 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --page-bg: #F7F8FC;
+  --card-bg: #FFFFFF;
+  --primary: #7C3AED;
+  --primary-light: #EDE9FE;
+  --text-primary: #172554;
+  --text-main: var(--text-primary);
+  --text-secondary: #334155;
+  --text-muted: #64748B;
+  --border: #CBD5E1;
+  --success: #16A34A;
+  --warning: #D97706;
+  --danger: #DC2626;
+  --info: #2563EB;
+  --road: #475569;
+}
+
 @layer base {
   body {
-    background-color: #F5F4FA;
-    color: #18243D;
+    background-color: var(--page-bg);
+    color: var(--text-main);
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
+  }
+
+  .leaflet-container {
+    color: var(--text-main);
+  }
+
+  .emergency-corridor-junction-icon {
+    background: transparent;
+    border: 0;
   }
 
   * {
@@ -20,9 +46,9 @@
 
 /* ── Scrollbar ─────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: #0C0F13; }
-::-webkit-scrollbar-thumb { background: #252C34; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #3A4450; }
+::-webkit-scrollbar-track { background: var(--page-bg); }
+::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
 
 /* ── Monospace for data values ─────────────────────────────── */
 .font-data {
@@ -99,37 +125,37 @@
 
 /* ── Leaflet map customizations ────────────────────────────── */
 .leaflet-container {
-  background: #0C0F13 !important;
+  background: #F1F5F9 !important;
   font-family: 'Inter', sans-serif;
 }
 
 .leaflet-control-attribution {
-  background: rgba(8, 10, 12, 0.85) !important;
-  color: #4B5563 !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  color: #64748B !important;
   font-size: 9px !important;
 }
 
 .leaflet-control-attribution a {
-  color: #6B7280 !important;
+  color: #475569 !important;
 }
 
 .leaflet-control-zoom a {
-  background: #14181D !important;
-  color: #9CA3AF !important;
-  border-color: #252C34 !important;
+  background: #FFFFFF !important;
+  color: #172554 !important;
+  border-color: #E2E8F0 !important;
 }
 
 .leaflet-control-zoom a:hover {
-  background: #1E2530 !important;
-  color: #E2E5E9 !important;
+  background: #EDE9FE !important;
+  color: #7C3AED !important;
 }
 
 .leaflet-popup-content-wrapper {
-  background: #14181D !important;
-  color: #E2E5E9 !important;
-  border: 1px solid #252C34 !important;
+  background: #FFFFFF !important;
+  color: #172554 !important;
+  border: 1px solid #E2E8F0 !important;
   border-radius: 8px !important;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.6) !important;
+  box-shadow: 0 4px 20px rgba(23,37,84,0.12) !important;
   padding: 0 !important;
 }
 
@@ -138,25 +164,26 @@
 }
 
 .leaflet-popup-tip {
-  background: #14181D !important;
+  background: #FFFFFF !important;
 }
 
 .leaflet-popup-close-button {
-  color: #6B7280 !important;
+  color: #64748B !important;
   padding: 6px 8px !important;
   font-size: 16px !important;
 }
 
 /* ── Status signal colors ──────────────────────────────────── */
-.signal-green  { color: #10b981; }
-.signal-red    { color: #ef4444; }
-.signal-yellow { color: #f59e0b; }
+.signal-green  { color: var(--success); }
+.signal-red    { color: var(--danger); }
+.signal-yellow { color: var(--warning); }
 
 /* ── Subtle panel borders ──────────────────────────────────── */
 .panel {
-  background: #10141A;
-  border: 1px solid #1E2530;
-  border-radius: 10px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(23, 37, 84, 0.06), 0 8px 24px rgba(23, 37, 84, 0.04);
 }
 
 /* ── Pulse animation for live indicator ────────────────────── */
@@ -167,43 +194,143 @@
 .pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
 
 .light-dashboard {
-  background: #F5F4FA;
-  color: #18243D;
+  background: var(--page-bg);
+  color: var(--text-main);
 }
 
-.light-dashboard [class*="bg-[#"] {
-  background-color: #FFFFFF !important;
+.light-dashboard [class*="bg-[#0C0F13]"],
+.light-dashboard [class*="bg-[#0C1014]"],
+.light-dashboard [class*="bg-[#10141A]"],
+.light-dashboard [class*="bg-[#141A20]"],
+.light-dashboard [class*="bg-[#14181C]"],
+.light-dashboard [class*="bg-[#0D1115]"],
+.light-dashboard [class*="bg-[#090B0D]"],
+.light-dashboard [class*="bg-[#0E1114]"],
+.light-dashboard [class*="bg-[#181D21]"] {
+  background-color: var(--card-bg) !important;
 }
 
-.light-dashboard [class*="border-[#"] {
-  border-color: #E5E7F0 !important;
+.light-dashboard [class*="bg-[#1A2128]"] {
+  background-color: var(--primary-light) !important;
 }
 
-.light-dashboard [class*="divide-[#"] > :not([hidden]) ~ :not([hidden]) {
-  border-color: #E5E7F0 !important;
+.light-dashboard [class*="border-[#1A2028]"],
+.light-dashboard [class*="border-[#1E2530]"],
+.light-dashboard [class*="border-[#242A30]"],
+.light-dashboard [class*="divide-[#1A2028]"] > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--border) !important;
 }
 
-.light-dashboard [class*="text-[#"] {
-  color: #64708A !important;
+.light-dashboard [class*="text-[#5A636B]"],
+.light-dashboard [class*="text-[#6A737B]"],
+.light-dashboard [class*="text-[#8A939B]"],
+.light-dashboard [class*="text-[#737B82]"],
+.light-dashboard [class*="text-[#3D4850]"],
+.light-dashboard [class*="text-[#B8BEC4]"],
+.light-dashboard [class*="text-[#C8CDD2]"] {
+  color: var(--text-secondary) !important;
 }
 
 .light-dashboard .text-white {
-  color: #18243D !important;
+  color: var(--text-main) !important;
 }
 
-.light-dashboard .leaflet-container {
-  background: #EEF0F7 !important;
+.light-dashboard .bg-red-500.text-white,
+.light-dashboard .bg-green-500.text-white,
+.light-dashboard .bg-emerald-500.text-white,
+.light-dashboard .bg-violet-600.text-white,
+.light-dashboard .bg-purple-500.text-white {
+  color: #FFFFFF !important;
 }
 
-.light-dashboard .leaflet-control-zoom a {
-  background: #FFFFFF !important;
-  color: #24314C !important;
-  border-color: #DDE1EC !important;
+.ambulance-marker-icon {
+  transition: transform 650ms linear !important;
+  will-change: transform;
 }
 
-.light-dashboard .leaflet-popup-content-wrapper,
-.light-dashboard .leaflet-popup-tip {
-  background: #FFFFFF !important;
-  color: #18243D !important;
-  border-color: #E5E7F0 !important;
+.camera-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.junction-control-dashboard [class*="text-[9px]"],
+.junction-control-dashboard [class*="text-[8px]"],
+.junction-control-dashboard [class*="text-[10px]"],
+.junction-control-dashboard [class*="text-[11px]"],
+.junction-control-dashboard [class*="text-[12px]"],
+.junction-control-dashboard .text-xs {
+  font-size: 14px !important;
+  letter-spacing: normal !important;
+}
+
+.junction-control-dashboard h2,
+.junction-control-dashboard h3 {
+  font-size: 24px;
+  line-height: 1.25;
+}
+
+.junction-control-dashboard h4 {
+  font-size: 20px;
+  line-height: 1.3;
+}
+
+.junction-control-dashboard [class*="text-[#"] {
+  color: var(--text-secondary) !important;
+}
+
+.junction-control-dashboard .text-emerald-400,
+.junction-control-dashboard .text-green-400 {
+  color: #15803D !important;
+}
+
+.junction-control-dashboard .text-amber-300,
+.junction-control-dashboard .text-amber-400 {
+  color: #B45309 !important;
+}
+
+.junction-control-dashboard .text-red-300,
+.junction-control-dashboard .text-red-400 {
+  color: #B91C1C !important;
+}
+
+.junction-control-dashboard .text-purple-300,
+.junction-control-dashboard .text-purple-400 {
+  color: #6D28D9 !important;
+}
+
+.junction-control-dashboard button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.junction-control-dashboard button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+@media (max-width: 640px) {
+  .camera-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 1100px) {
+  .live-traffic-layout {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .live-traffic-map {
+    min-height: 420px;
+    height: min(55vh, 600px);
+    flex: none;
+  }
+
+  .live-traffic-junctions {
+    width: 100%;
+    max-height: 320px;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
 }
