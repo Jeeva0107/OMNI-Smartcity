@@ -20,9 +20,9 @@ const MainContent = () => {
   const { activeTab } = useTraffic();
 
   return (
-    <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden bg-[#090B0D]">
+    <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden bg-[#F5F4FA] text-[#18243D]">
       <Header />
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-[#F5F4FA]">
         {activeTab === 'overview' && <OverviewTab />}
         {activeTab === 'live_traffic' && <LiveTrafficTab />}
         {activeTab === 'traffic_intelligence' && <TrafficIntelligenceTab />}
@@ -43,7 +43,7 @@ const MainContent = () => {
 export default function App() {
   return (
     <TrafficProvider>
-      <div className="flex h-screen w-screen overflow-hidden bg-[#090B0D] text-[#F4F5F2] antialiased">
+      <div className="flex h-screen w-screen overflow-hidden bg-[#F5F4FA] text-[#18243D] antialiased">
         <Sidebar />
         <MainContent />
       </div>

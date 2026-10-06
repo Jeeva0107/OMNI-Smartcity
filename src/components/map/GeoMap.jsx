@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { MapPin, X, Camera, Building2, Clock } from 'lucide-react';
-import { MapContainer, TileLayer, Marker, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Polyline, CircleMarker, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import { useTraffic } from '../../context/TrafficContext';
 import { ROAD_CONNECTIONS } from '../../data/mockData';
@@ -8,8 +8,9 @@ import { ROAD_CONNECTIONS } from '../../data/mockData';
 // ── Source Badge component ────────────────────────────────────────────────────
 export const SourceBadge = ({ source, type, label }) => {
   const s = (source || type || label || '').toUpperCase();
-  if (s.includes('TOMTOM') || s === 'LIVE') {
-    return <span className="px-1.5 py-0.5 rounded text-[8px] font-mono font-extrabold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">▲ TOMTOM LIVE</span>;
+  if (s.includes('TOMTOM') || s === 'LIVE' || s.includes('LIVE BACKEND') || s.includes('LIVE GPS')) {
+    const liveLabel = s.includes('TOMTOM') ? '▲ TOMTOM LIVE' : '● LIVE BACKEND';
+    return <span className="px-1.5 py-0.5 rounded text-[8px] font-mono font-extrabold bg-cyan-500/15 text-cyan-700 border border-cyan-500/30">{liveLabel}</span>;
   }
   if (s.includes('YOLO')) {
     return <span className="px-1.5 py-0.5 rounded text-[8px] font-mono font-extrabold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">● YOLO11n VIDEO INPUT</span>;
@@ -43,6 +44,18 @@ function toNum(v) {
   if (typeof v === 'number') return v;
   if (typeof v === 'string') return parseFloat(v);
   return 0;
+}
+
+function toPosition(point) {
+  if (Array.isArray(point) && point.length >= 2) {
+    const lat = toNum(point[0]);
+    const lng = toNum(point[1]);
+    return lat && lng ? [lat, lng] : null;
+  }
+  if (!point || typeof point !== 'object') return null;
+  const lat = toNum(point.latitude ?? point.lat);
+  const lng = toNum(point.longitude ?? point.lng);
+  return lat && lng ? [lat, lng] : null;
 }
 
 // ── Junction Detail Panel (shown on click) ────────────────────────────────────
@@ -235,34 +248,44 @@ export const JunctionPanel = ({ junction, onClose }) => {
 
 // ── Build a Leaflet divIcon for a junction marker ─────────────────────────────
 function makeJunctionIcon(j, isAmbulanceCurrent) {
-  const sc = STATUS_COLOR[j.status] || STATUS_COLOR.SMOOTH;
-  const size = isAmbulanceCurrent ? 18 : 14;
-  const glowPx = isAmbulanceCurrent ? 8 : 4;
-  const color = isAmbulanceCurrent ? '#f97316' : sc.fill;
-  const border = isAmbulanceCurrent ? '#ea580c' : sc.stroke;
+  const signal = String(j.signal || j.currentPhase || 'RED').toUpperCase();
+  const activeColor = signal === 'GREEN' ? '#16a34a' : signal === 'YELLOW' ? '#d97706' : '#dc2626';
+  const size = isAmbulanceCurrent ? 21 : 18;
+  const red = signal === 'RED' || signal === 'ALL_RED' ? '#ef4444' : '#fecaca';
+  const amber = signal === 'YELLOW' ? '#f59e0b' : '#fde68a';
+  const green = signal === 'GREEN' ? '#22c55e' : '#bbf7d0';
 
   return L.divIcon({
     className: '',
     html: `
       <div style="position:relative;display:flex;align-items:center;justify-content:center;">
         <div style="
-          width:${size}px;height:${size}px;border-radius:50%;
-          background:${color};border:2px solid ${border};
-          box-shadow:0 0 ${glowPx}px ${color}80;cursor:pointer;
-          transition:transform 0.15s;
-        "></div>
+          width:${size}px;height:${size * 1.45}px;border-radius:8px;
+          background:#17233c;border:2px solid ${isAmbulanceCurrent ? '#f97316' : '#ffffff'};
+          box-shadow:0 2px 8px ${activeColor}80;cursor:pointer;
+          display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+        ">
+          <i style="width:5px;height:5px;border-radius:50%;background:${red};"></i>
+          <i style="width:5px;height:5px;border-radius:50%;background:${amber};"></i>
+          <i style="width:5px;height:5px;border-radius:50%;background:${green};"></i>
+        </div>
         <div style="
-          position:absolute;top:${isAmbulanceCurrent ? -22 : -20}px;left:50%;
+          position:absolute;top:${isAmbulanceCurrent ? -25 : -23}px;left:50%;
           transform:translateX(-50%);font-size:9px;font-weight:700;
           font-family:'Inter',system-ui,sans-serif;white-space:nowrap;
-          color:#E2E5E9;background:rgba(12,15,19,0.92);
-          padding:2px 6px;border-radius:4px;border:1px solid #252C34;
-          pointer-events:none;box-shadow:0 2px 6px rgba(0,0,0,0.6);
-        "><span style="color:#F59E0B;font-family:'JetBrains Mono',monospace;font-weight:800;margin-right:4px;">${j.id}</span>${j.name}</div>
+          color:#18243d;background:rgba(255,255,255,0.96);
+          padding:2px 6px;border-radius:5px;border:1px solid #dfe3ee;
+          pointer-events:none;box-shadow:0 2px 6px rgba(24,36,61,0.16);
+        ">
+          <div><span style="color:${activeColor};font-family:'JetBrains Mono',monospace;font-weight:800;margin-right:4px;">${j.id}</span>${j.name}</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:8px;color:${activeColor};margin-top:2px;">
+            ${signal} · ${j.remainingTime ?? '—'}s
+          </div>
+        </div>
       </div>
     `,
-    iconSize: [size, size],
-    iconAnchor: [size / 2, size / 2],
+    iconSize: [size, size * 1.45],
+    iconAnchor: [size / 2, (size * 1.45) / 2],
   });
 }
 
@@ -292,6 +315,15 @@ function makeAmbulanceIcon(ambulanceId) {
   });
 }
 
+function makeDestinationIcon() {
+  return L.divIcon({
+    className: '',
+    html: '<div style="width:30px;height:30px;border:2px solid #fff;border-radius:50% 50% 50% 4px;transform:rotate(-45deg);background:#7c3aed;box-shadow:0 2px 8px #4c1d95aa;display:flex;align-items:center;justify-content:center;color:#fff;font:700 11px Inter,sans-serif;"><span style="transform:rotate(45deg)">ER</span></div>',
+    iconSize: [30, 30],
+    iconAnchor: [15, 26],
+  });
+}
+
 // ── Ambulance marker sub-component (needs useMap for dynamic positioning) ─────
 const AmbulanceMarker = ({ position, ambulanceId }) => {
   if (!position) return null;
@@ -301,7 +333,7 @@ const AmbulanceMarker = ({ position, ambulanceId }) => {
 
 // ── Geographic Map using React Leaflet + OpenStreetMap tiles ──────────────────
 export const GeoMap = ({ onSelectJunction, selectedRoute = null, showAmbulance = false, showJunctionMarkers = true }) => {
-  const { junctions, ambulance } = useTraffic();
+  const { junctions, ambulance, tomtomStatus, incidents = [] } = useTraffic();
   const [selectedJunction, setSelectedJunction] = useState(null);
 
   // Always derive live selected junction object from junctions array
@@ -355,6 +387,10 @@ export const GeoMap = ({ onSelectJunction, selectedRoute = null, showAmbulance =
   // ── Ambulance corridor overlay ──────────────────────────────────────────────
   const ambCorridorCoords = useMemo(() => {
     if (!showAmbulance || !ambulance.active) return null;
+    const routePositions = (Array.isArray(ambulance.route) ? ambulance.route : [])
+      .map(toPosition)
+      .filter(Boolean);
+    if (routePositions.length > 1) return routePositions;
     const coords = ambulance.routeJunctions
       .map(id => junctionMap[id])
       .filter(Boolean)
@@ -362,6 +398,31 @@ export const GeoMap = ({ onSelectJunction, selectedRoute = null, showAmbulance =
       .filter(([lat, lng]) => lat && lng);
     return coords.length > 1 ? coords : null;
   }, [showAmbulance, ambulance, junctionMap]);
+
+  const destinationPosition = useMemo(() => {
+    const destination = ambulance.destinationLocation;
+    const directPosition = toPosition(destination);
+    if (directPosition) return directPosition;
+    if (ambCorridorCoords?.length) return ambCorridorCoords[ambCorridorCoords.length - 1];
+    return null;
+  }, [ambulance.destinationLocation, ambCorridorCoords]);
+
+  const incidentMarkers = useMemo(() => {
+    const providerIncidents = Array.isArray(tomtomStatus?.incidents) ? tomtomStatus.incidents : [];
+    const eventIncidents = incidents
+      .filter(event => /INCIDENT|ROAD_BLOCK|COLLISION|HAZARD/i.test(`${event.category || ''} ${event.title || ''}`))
+      .map(event => {
+        const junction = junctionMap[event.location];
+        return {
+          ...event,
+          latitude: event.latitude ?? event.lat ?? junction?.lat,
+          longitude: event.longitude ?? event.lng ?? junction?.lng,
+        };
+      });
+    return [...providerIncidents, ...eventIncidents]
+      .map(incident => ({ incident, position: toPosition(incident) }))
+      .filter(item => item.position);
+  }, [tomtomStatus, incidents, junctionMap]);
 
   // ── Current ambulance position ──────────────────────────────────────────────
   const ambPosition = useMemo(() => {
@@ -403,7 +464,7 @@ export const GeoMap = ({ onSelectJunction, selectedRoute = null, showAmbulance =
         zoomControl={true}
         attributionControl={true}
         className="w-full h-full rounded-xl"
-        style={{ background: '#0C0F13' }}
+        style={{ background: '#EEF0F7' }}
       >
         {/* Official OpenStreetMap raster tiles */}
         <TileLayer
@@ -448,12 +509,38 @@ export const GeoMap = ({ onSelectJunction, selectedRoute = null, showAmbulance =
               position={[lat, lng]}
               icon={junctionIcons[j.id]}
               eventHandlers={{ click: () => handleMarkerClick(j) }}
-            />
+            >
+              <Tooltip direction="top">
+                <strong>{j.name}</strong><br />
+                Phase: {j.currentPhase || j.signal}<br />
+                Countdown: {j.remainingTime ?? '—'}s
+              </Tooltip>
+            </Marker>
           );
         })}
 
         {/* Ambulance marker — now uses live ambulance ID */}
         {ambPosition && <AmbulanceMarker position={ambPosition} ambulanceId={ambulance.id || 'AMB-000'} />}
+        {showAmbulance && ambulance.active && destinationPosition && (
+          <Marker position={destinationPosition} icon={makeDestinationIcon()}>
+            <Tooltip direction="top">
+              Destination: {ambulance.destination || 'Hospital'}
+            </Tooltip>
+          </Marker>
+        )}
+        {incidentMarkers.map(({ incident, position }, index) => (
+          <CircleMarker
+            key={incident.id || incident.incidentId || `${position.join('-')}-${index}`}
+            center={position}
+            radius={8}
+            pathOptions={{ color: '#b91c1c', weight: 2, fillColor: '#ef4444', fillOpacity: 0.8 }}
+          >
+            <Tooltip direction="top">
+              <strong>{incident.title || incident.description || 'Traffic incident'}</strong>
+              {incident.location ? <><br />{incident.location}</> : null}
+            </Tooltip>
+          </CircleMarker>
+        ))}
       </MapContainer>
 
       {/* Map source badge */}
@@ -463,12 +550,18 @@ export const GeoMap = ({ onSelectJunction, selectedRoute = null, showAmbulance =
       </div>
 
       {/* Legend */}
-      <div className="absolute top-3 left-3 z-[800] bg-[#0C0F13]/90 backdrop-blur-sm border border-[#1E2530] rounded-lg p-3 shadow-xl">
-        <div className="text-[9px] font-bold text-[#5A636B] uppercase tracking-wider mb-2">Chennai Traffic Status</div>
-        {Object.entries(STATUS_COLOR).map(([status, sc]) => (
-          <div key={status} className="flex items-center gap-2 mb-1">
-            <div className="w-2.5 h-2.5 rounded-full" style={{ background: sc.fill }} />
-            <span className="text-[9px] text-[#8A939B] font-medium">{status}</span>
+      <div className="absolute top-3 left-3 z-[800] bg-white/95 backdrop-blur-sm border border-slate-200 rounded-lg p-3 shadow-lg">
+        <div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-2">Map legend</div>
+        {[
+          ['#16a34a', 'Green signal'],
+          ['#d97706', 'Amber signal'],
+          ['#dc2626', 'Red signal'],
+          ['#7c3aed', 'Hospital destination'],
+          ['#ef4444', 'Incident'],
+        ].map(([color, label]) => (
+          <div key={label} className="flex items-center gap-2 mb-1">
+            <div className="w-2.5 h-2.5 rounded-full" style={{ background: color }} />
+            <span className="text-[9px] text-slate-600 font-medium">{label}</span>
           </div>
         ))}
         {showAmbulance && ambulance.active && (

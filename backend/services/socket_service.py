@@ -36,9 +36,11 @@ def handle_disconnect():
 
 
 @socketio.on("ambulance:join-trip")
+@socketio.on("emergency_join_trip")
+@socketio.on("join-trip")
 def handle_join_trip(data: Dict[str, Any]):
     """
-    Client emits 'ambulance:join-trip' with { ambulanceId, tripId }
+    Client emits 'ambulance:join-trip' or 'emergency_join_trip' with { ambulanceId, tripId }
     Joins socket client to room 'ambulance-trip-{tripId}' and 'ambulance-trip-{ambulanceId}'
     """
     data = data or {}
@@ -52,16 +54,19 @@ def handle_join_trip(data: Dict[str, Any]):
     join_room(room2)
     logger.info(f"[SocketService] Joined Socket.IO rooms: {room1}, {room2}")
 
-    emit("joined-trip", {
+    response = {
         "status": "success",
         "tripId": trip_id,
         "ambulanceId": ambulance_id,
         "room": room1,
         "timestamp": time.strftime("%H:%M:%S")
-    })
+    }
+    emit("joined-trip", response)
+    emit("emergency_joined_trip", response)
 
 
 @socketio.on("ambulance:trip-ended")
+@socketio.on("emergency_trip_ended")
 def handle_trip_ended_event(data: Dict[str, Any]):
     from services.emergency_service import end_ambulance_trip
     data = data or {}
@@ -70,24 +75,50 @@ def handle_trip_ended_event(data: Dict[str, Any]):
     end_ambulance_trip(ambulance_id, trip_id)
 
 
-# ── Server → Ambulance App Emission Helpers ──────────────────────────────────
+# ── Server → Ambulance App & Website Emission Helpers ─────────────────────────
 def emit_junction_signal_updated(trip_id: str, payload: Dict[str, Any], ambulance_id: Optional[str] = None):
-    """Emits junction:signal-updated to trip room."""
+    """Emits traffic_signal_changed & junction:signal-updated to trip room and globally."""
     room = f"ambulance-trip-{trip_id}"
+    socketio.emit("traffic_signal_changed", payload, to=room)
     socketio.emit("junction:signal-updated", payload, to=room)
     if ambulance_id:
+        socketio.emit("traffic_signal_changed", payload, to=f"ambulance-trip-{ambulance_id}")
         socketio.emit("junction:signal-updated", payload, to=f"ambulance-trip-{ambulance_id}")
-    # Also emit globally for listeners not in a specific room
+    socketio.emit("traffic_signal_changed", payload)
     socketio.emit("junction:signal-updated", payload)
 
 
 def emit_corridor_status_updated(trip_id: str, payload: Dict[str, Any], ambulance_id: Optional[str] = None):
-    """Emits corridor:status-updated to trip room."""
+    """Emits emergency_corridor_updated & corridor:status-updated to trip room and globally."""
     room = f"ambulance-trip-{trip_id}"
+    socketio.emit("emergency_corridor_updated", payload, to=room)
     socketio.emit("corridor:status-updated", payload, to=room)
     if ambulance_id:
+        socketio.emit("emergency_corridor_updated", payload, to=f"ambulance-trip-{ambulance_id}")
         socketio.emit("corridor:status-updated", payload, to=f"ambulance-trip-{ambulance_id}")
+    socketio.emit("emergency_corridor_updated", payload)
     socketio.emit("corridor:status-updated", payload)
+
+
+def emit_ambulance_location_updated(trip_id: str, payload: Dict[str, Any], ambulance_id: Optional[str] = None):
+    """Emits ambulance_location_updated to trip room and globally."""
+    room = f"ambulance-trip-{trip_id}"
+    socketio.emit("ambulance_location_updated", payload, to=room)
+    if ambulance_id:
+        socketio.emit("ambulance_location_updated", payload, to=f"ambulance-trip-{ambulance_id}")
+    socketio.emit("ambulance_location_updated", payload)
+
+
+def emit_emergency_trip_started(trip_id: str, payload: Dict[str, Any], ambulance_id: Optional[str] = None):
+    """Emits emergency_trip_started & ambulance:trip-started to trip room and globally."""
+    room = f"ambulance-trip-{trip_id}"
+    socketio.emit("emergency_trip_started", payload, to=room)
+    socketio.emit("ambulance:trip-started", payload, to=room)
+    if ambulance_id:
+        socketio.emit("emergency_trip_started", payload, to=f"ambulance-trip-{ambulance_id}")
+        socketio.emit("ambulance:trip-started", payload, to=f"ambulance-trip-{ambulance_id}")
+    socketio.emit("emergency_trip_started", payload)
+    socketio.emit("ambulance:trip-started", payload)
 
 
 def emit_ambulance_notification(trip_id: str, payload: Dict[str, Any], ambulance_id: Optional[str] = None):
@@ -100,18 +131,24 @@ def emit_ambulance_notification(trip_id: str, payload: Dict[str, Any], ambulance
 
 
 def emit_ambulance_route_changed(trip_id: str, payload: Dict[str, Any], ambulance_id: Optional[str] = None):
-    """Emits ambulance:route-changed to trip room."""
+    """Emits emergency_route_updated & ambulance:route-changed to trip room."""
     room = f"ambulance-trip-{trip_id}"
+    socketio.emit("emergency_route_updated", payload, to=room)
     socketio.emit("ambulance:route-changed", payload, to=room)
     if ambulance_id:
+        socketio.emit("emergency_route_updated", payload, to=f"ambulance-trip-{ambulance_id}")
         socketio.emit("ambulance:route-changed", payload, to=f"ambulance-trip-{ambulance_id}")
+    socketio.emit("emergency_route_updated", payload)
     socketio.emit("ambulance:route-changed", payload)
 
 
 def emit_ambulance_trip_ended(trip_id: str, payload: Dict[str, Any], ambulance_id: Optional[str] = None):
-    """Emits ambulance:trip-ended to trip room."""
+    """Emits emergency_trip_ended & ambulance:trip-ended to trip room."""
     room = f"ambulance-trip-{trip_id}"
+    socketio.emit("emergency_trip_ended", payload, to=room)
     socketio.emit("ambulance:trip-ended", payload, to=room)
     if ambulance_id:
+        socketio.emit("emergency_trip_ended", payload, to=f"ambulance-trip-{ambulance_id}")
         socketio.emit("ambulance:trip-ended", payload, to=f"ambulance-trip-{ambulance_id}")
+    socketio.emit("emergency_trip_ended", payload)
     socketio.emit("ambulance:trip-ended", payload)

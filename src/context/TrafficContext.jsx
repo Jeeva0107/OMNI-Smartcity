@@ -6,6 +6,7 @@ import React, {
   useRef,
   useCallback,
 } from 'react';
+import { io } from 'socket.io-client';
 import {
   INITIAL_JUNCTIONS,
   INITIAL_ROUTES,
@@ -22,10 +23,8 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 // Config
 // ─────────────────────────────────────────────────────────────────────────────
-const WS_URL         = 'ws://localhost:5000/ws/live';
-const RECONNECT_BASE = 1500;   // ms — first retry delay
-const RECONNECT_MAX  = 30000;  // ms — cap at 30 s
-const PING_INTERVAL  = 20000;  // ms — keep-alive ping
+const SOCKET_URL = 'https://omni-smartcity-backend.onrender.com';
+const REST_REFRESH_INTERVAL = 15000;
 
 const TrafficContext = createContext(null);
 
@@ -58,11 +57,21 @@ function normalizeAmbulance(raw) {
     unit:                 raw.unit                 || '',
     patientStatus:        raw.patientStatus        || '',
     origin:               raw.origin               || '',
-    destination:          raw.destination          || raw.destinationName || '',
-    latitude:             raw.latitude ?? raw.lat  ?? null,
-    longitude:            raw.longitude ?? raw.lng ?? null,
+    destination:          raw.destination && typeof raw.destination === 'object'
+      ? (raw.destination.name || raw.destination.title || raw.destinationName || '')
+      : (raw.destination || raw.destinationName || ''),
+    destinationLocation:  raw.destinationLocation ?? (raw.destination && typeof raw.destination === 'object' ? raw.destination : null),
+    latitude:             raw.latitude ?? raw.lat ?? raw.currentLocation?.latitude ?? raw.location?.latitude ?? null,
+    longitude:            raw.longitude ?? raw.lng ?? raw.currentLocation?.longitude ?? raw.location?.longitude ?? null,
+    route:                raw.route ?? raw.activeRoute?.polyline ?? raw.activeRoute?.coordinates ?? [],
     speed:                raw.speed                ?? 0,
     eta:                  raw.eta                  || '--:--',
+    etaSeconds:           raw.etaSeconds            ?? null,
+    routeProgress:        raw.routeProgress         ?? 0,
+    currentJunctionId:    raw.currentJunctionId     ?? raw.currentJunction ?? '',
+    nextJunctionId:       raw.nextJunctionId        ?? raw.nextJunction ?? '',
+    signalChanges:        raw.signalChanges         ?? [],
+    lastUpdated:          raw.lastUpdated           ?? raw.updatedAt ?? null,
     distRemaining:        raw.distRemaining        || '',
     corridorApproved:     raw.corridorApproved     ?? false,
     currentJunctionIndex: raw.currentJunctionIndex ?? 0,
@@ -104,12 +113,8 @@ export const TrafficProvider = ({ children }) => {
   const [backendOnline, setBackendOnline] = useState(false);
   const [lastUpdated,   setLastUpdated]   = useState(null);
 
-  // ── Internal WS refs ────────────────────────────────────────────────────────
-  const wsRef         = useRef(null);
-  const retryCountRef = useRef(0);
-  const retryTimerRef = useRef(null);
-  const pingTimerRef  = useRef(null);
-  const mountedRef    = useRef(true);
+  // ── Internal Socket.IO ref ──────────────────────────────────────────────────
+  const socketRef = useRef(null);
 
   const selectedJunction = junctions.find(j => j.id === selectedJunctionId) || null;
 
@@ -145,146 +150,141 @@ export const TrafficProvider = ({ children }) => {
   }, []);
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // WebSocket message handler
+  // Apply live ambulance events without replacing fields omitted by partial events
   // ─────────────────────────────────────────────────────────────────────────────
-  const handleWsMessage = useCallback((event) => {
-    let msg;
-    try { msg = JSON.parse(event.data); } catch { return; }
-
-    const { type, data, timestamp } = msg;
-    if (timestamp) setLastUpdated(timestamp);
-
-    switch (type) {
-      case 'INITIAL_STATE':
-      case 'STATE_UPDATE':
-      case 'JUNCTION_UPDATED':
-      case 'JUNCTIONS_SET':
-      case 'TICK':
-        applyStateSnapshot(data);
-        break;
-
-      case 'CORRIDOR_UPDATED':
-      case 'AMBULANCE_UPDATED': {
-        const rawAmb = data?.ambulances ?? data?.ambulance;
-        const norm   = normalizeAmbulance(rawAmb);
-        if (norm) setAmbulance(norm);
-        const corridor = data?.emergencyCorridor ?? data?.emergency_corridor;
-        if (corridor) setCorridorData(corridor);
-        if (data?.eta) setEtaData(data.eta);
-        break;
-      }
-
-      case 'EVENT_ADDED':
-        if (Array.isArray(data?.events)) setEvents(data.events);
-        break;
-
-      case 'ROUTES_UPDATED':
-        if (Array.isArray(data?.routes)) setRoutes(data.routes);
-        break;
-
-      case 'CAMERAS_UPDATED':
-        if (Array.isArray(data?.cameras)) setCameras(data.cameras);
-        break;
-
-      case 'YOLO_METRICS_UPDATED': {
-        const yolo = data?.yoloMetrics ?? data?.yolo_metrics;
-        if (yolo) setYoloMetrics(yolo);
-        break;
-      }
-
-      case 'TOMTOM_UPDATED': {
-        // Backend broadcasts this whenever TomTom data is refreshed
-        const tt = data?.tomtomStatus ?? data?.tomtom_status;
-        if (tt && typeof tt === 'object') setTomtomStatus(tt);
-        // Also refresh junctions — they carry updated speed/freeFlowSpeed
-        if (Array.isArray(data?.junctions) && data.junctions.length) setJunctions(data.junctions);
-        break;
-      }
-
-      case 'PONG':
-        break; // keep-alive acknowledged
-
-      default:
-        // Generic full-state payload
-        if (data && typeof data === 'object' && data.junctions) applyStateSnapshot(data);
+  const applyAmbulanceEvent = useCallback((eventData, replace = false) => {
+    const raw = eventData?.activeTrip ?? eventData?.trip ?? eventData?.ambulance ?? eventData;
+    if (!raw || typeof raw !== 'object') return;
+    setAmbulance(previous => normalizeAmbulance(replace ? raw : { ...previous, ...raw }) || previous);
+    if (eventData?.signalChanges) {
+      setCorridorData(previous => ({ ...(previous || {}), ...eventData }));
     }
-  }, [applyStateSnapshot]);
+  }, []);
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Connect to WebSocket (called on mount and after each disconnect)
-  // ─────────────────────────────────────────────────────────────────────────────
-  const scheduleReconnect = useCallback(() => {
-    if (!mountedRef.current) return;
-    clearTimeout(retryTimerRef.current);
-    const delay = Math.min(
-      RECONNECT_BASE * Math.pow(1.6, retryCountRef.current),
-      RECONNECT_MAX
-    );
-    retryCountRef.current += 1;
-    retryTimerRef.current = setTimeout(() => {
-      if (mountedRef.current) connectWs(); // eslint-disable-line no-use-before-define
-    }, delay);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const applySignalEvent = useCallback((eventData) => {
+    const junctionId = eventData?.junctionId;
+    const signal = eventData?.signalState ?? eventData?.currentPhase;
+    if (!junctionId || !signal) return;
+    setJunctions(previous => previous.map(junction => junction.id === junctionId
+      ? {
+          ...junction,
+          signal,
+          currentPhase: eventData.currentPhase ?? signal,
+          remainingTime: eventData.remainingTime ?? junction.remainingTime,
+          signalReason: eventData.signalReason ?? junction.signalReason,
+        }
+      : junction
+    ));
+    setAmbulance(previous => ({
+      ...previous,
+      signalChanges: eventData.signalChanges ?? previous.signalChanges,
+    }));
+  }, []);
 
-  const connectWs = useCallback(() => {
-    if (!mountedRef.current) return;
+  // Connect to the deployed Flask-SocketIO backend; REST snapshots recover missed events.
+  useEffect(() => {
+    const socket = io(SOCKET_URL, {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+    });
+    socketRef.current = socket;
 
-    // Close any lingering socket
-    if (wsRef.current) {
-      try { wsRef.current.close(); } catch {}
-      wsRef.current = null;
-    }
+    const refreshSnapshot = () => {
+      emergencyService.getLiveState()
+        .then(snapshot => {
+          applyStateSnapshot(snapshot);
+          setBackendOnline(true);
+          console.info('[Socket.IO] REST state snapshot refreshed');
+        })
+        .catch(error => {
+          setBackendOnline(false);
+          console.warn('[Socket.IO] REST state refresh failed:', error.message);
+        });
+    };
 
-    let ws;
-    try { ws = new WebSocket(WS_URL); }
-    catch { scheduleReconnect(); return; }
-
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      if (!mountedRef.current) { ws.close(); return; }
-      retryCountRef.current = 0;
+    socket.on('connect', () => {
+      console.info('[Socket.IO] Connected to emergency corridor backend');
       setWsConnected(true);
       setBackendOnline(true);
-
-      // Start keep-alive pings
-      clearInterval(pingTimerRef.current);
-      pingTimerRef.current = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'PING' }));
-        }
-      }, PING_INTERVAL);
-    };
-
-    ws.onmessage = handleWsMessage;
-    ws.onerror   = () => {};   // onclose fires right after
-
-    ws.onclose = () => {
-      if (!mountedRef.current) return;
-      clearInterval(pingTimerRef.current);
+      refreshSnapshot();
+    });
+    socket.on('disconnect', reason => {
+      console.warn('[Socket.IO] Disconnected from backend:', reason);
       setWsConnected(false);
-      setBackendOnline(false);
-      scheduleReconnect();
-    };
-  }, [handleWsMessage, scheduleReconnect]);
+    });
+    socket.on('connect_error', error => {
+      console.error('[Socket.IO] Backend connection error:', error.message);
+      setWsConnected(false);
+      refreshSnapshot();
+    });
 
-  // Mount once
-  useEffect(() => {
-    mountedRef.current = true;
-    connectWs();
+    const onTripStarted = data => {
+      console.info('[Socket.IO] Emergency trip started:', data?.tripId);
+      applyAmbulanceEvent(data, true);
+      setCorridorData(previous => ({ ...(previous || {}), ...data, active: true }));
+    };
+    const onLocationUpdated = data => {
+      console.info('[Socket.IO] Ambulance location updated:', data?.ambulanceId, data?.latitude, data?.longitude);
+      applyAmbulanceEvent(data);
+    };
+    const onRouteChanged = data => {
+      console.info('[Socket.IO] Ambulance route changed:', data?.newRouteId ?? data?.routeId);
+      applyAmbulanceEvent({
+        ...data,
+        routeId: data?.newRouteId ?? data?.routeId,
+        route: data?.route ?? data?.newRoute?.polyline ?? data?.newRoute?.coordinates,
+        routeJunctions: data?.junctions,
+        etaSeconds: data?.newEtaSeconds ?? data?.etaSeconds,
+      });
+    };
+    const onCorridorUpdated = data => {
+      applyAmbulanceEvent(data);
+      setCorridorData(previous => ({ ...(previous || {}), ...data }));
+    };
+    const onSignalChanged = data => {
+      console.info('[Socket.IO] Traffic signal changed:', data?.junctionId, data?.signalState);
+      applySignalEvent(data);
+    };
+    const onTripEnded = data => {
+      console.info('[Socket.IO] Emergency trip ended:', data?.tripId);
+      applyAmbulanceEvent({ ...data, active: false, emergencyActive: false, tripStatus: 'COMPLETED' });
+      setCorridorData(previous => ({ ...(previous || {}), ...data, active: false }));
+    };
+    const onStateUpdate = message => {
+      if (message?.timestamp) setLastUpdated(message.timestamp);
+      if (message?.data) applyStateSnapshot(message.data);
+    };
+
+    socket.on('state:update', onStateUpdate);
+    socket.on('emergency_trip_started', onTripStarted);
+    socket.on('ambulance:trip-started', onTripStarted);
+    socket.on('ambulance_location_updated', onLocationUpdated);
+    socket.on('emergency_route_updated', onRouteChanged);
+    socket.on('ambulance:route-changed', onRouteChanged);
+    socket.on('emergency_corridor_updated', onCorridorUpdated);
+    socket.on('corridor:status-updated', onCorridorUpdated);
+    socket.on('traffic_signal_changed', onSignalChanged);
+    socket.on('junction:signal-updated', onSignalChanged);
+    socket.on('emergency_trip_ended', onTripEnded);
+    socket.on('ambulance:trip-ended', onTripEnded);
+
+    const restFallback = setInterval(() => {
+      if (!socket.connected) refreshSnapshot();
+    }, REST_REFRESH_INTERVAL);
+
     return () => {
-      mountedRef.current = false;
-      clearTimeout(retryTimerRef.current);
-      clearInterval(pingTimerRef.current);
-      if (wsRef.current) try { wsRef.current.close(); } catch {}
+      clearInterval(restFallback);
+      socket.removeAllListeners();
+      socket.disconnect();
+      socketRef.current = null;
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [applyAmbulanceEvent, applySignalEvent, applyStateSnapshot]);
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // SIMULATION fallback ticker — only when WS is offline AND isSimulating
+  // Existing offline demo fallback; never synthesize traffic over an active trip.
   // ─────────────────────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!isSimulating || wsConnected) return;
+    if (!isSimulating || wsConnected || ambulance.active) return;
 
     const interval = setInterval(() => {
       setJunctions(prev => prev.map(j => {
@@ -305,7 +305,7 @@ export const TrafficProvider = ({ children }) => {
     }, 4000 / simSpeed);
 
     return () => clearInterval(interval);
-  }, [isSimulating, simSpeed, wsConnected]);
+  }, [isSimulating, simSpeed, wsConnected, ambulance.active]);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // addEvent — append a new event to the event log
@@ -330,6 +330,9 @@ export const TrafficProvider = ({ children }) => {
     const interval = setInterval(() => {
       setJunctions(prev => prev.map(j => {
         const rem = (j.remainingTime != null ? j.remainingTime : 20) - 1;
+        if (rem <= 0 && ambulance.active) {
+          return { ...j, remainingTime: 0 };
+        }
         if (rem <= 0) {
           const isGreen = j.signal === 'GREEN';
           const nextSig = isGreen ? 'RED' : 'GREEN';
@@ -345,7 +348,7 @@ export const TrafficProvider = ({ children }) => {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [ambulance.active]);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Junction Control Mode & Override Actions

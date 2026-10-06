@@ -7,8 +7,8 @@
 
 @layer base {
   body {
-    background-color: #080A0C;
-    color: #E2E5E9;
+    background-color: #F5F4FA;
+    color: #18243D;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
@@ -165,3 +165,45 @@
   50% { opacity: 0.4; }
 }
 .pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
+
+.light-dashboard {
+  background: #F5F4FA;
+  color: #18243D;
+}
+
+.light-dashboard [class*="bg-[#"] {
+  background-color: #FFFFFF !important;
+}
+
+.light-dashboard [class*="border-[#"] {
+  border-color: #E5E7F0 !important;
+}
+
+.light-dashboard [class*="divide-[#"] > :not([hidden]) ~ :not([hidden]) {
+  border-color: #E5E7F0 !important;
+}
+
+.light-dashboard [class*="text-[#"] {
+  color: #64708A !important;
+}
+
+.light-dashboard .text-white {
+  color: #18243D !important;
+}
+
+.light-dashboard .leaflet-container {
+  background: #EEF0F7 !important;
+}
+
+.light-dashboard .leaflet-control-zoom a {
+  background: #FFFFFF !important;
+  color: #24314C !important;
+  border-color: #DDE1EC !important;
+}
+
+.light-dashboard .leaflet-popup-content-wrapper,
+.light-dashboard .leaflet-popup-tip {
+  background: #FFFFFF !important;
+  color: #18243D !important;
+  border-color: #E5E7F0 !important;
+}

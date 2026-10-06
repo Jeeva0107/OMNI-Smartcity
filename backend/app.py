@@ -26,9 +26,6 @@ from routes.event_routes import events_bp
 def create_app() -> Flask:
     app = Flask(__name__)
 
-    # ── Start TomTom Traffic Service ────────────────────────────────────────────
-    tomtom_service.start_background_sync(Config.TOMTOM_SYNC_INTERVAL)
-
     # ── CORS ───────────────────────────────────────────────────────────────────
     CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=False)
 
@@ -107,11 +104,8 @@ def create_app() -> Flask:
     def health():
         return jsonify({
             "status": "ok",
-            "service": "omni-smartcity-api",
-            "centralState": "ACTIVE",
-            "websocketEndpoint": "/ws/live",
-            "socketIoEndpoint": "/"
-        })
+            "service": "omni-smartcity-backend",
+        }), 200
 
     # ── 404 / 405 JSON handlers ─────────────────────────────────────────────────
     @app.errorhandler(404)
@@ -131,7 +125,10 @@ def create_app() -> Flask:
 
 if __name__ == "__main__":
     app = create_app()
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 10000))
+
+    # Keep app creation and /health independent of external traffic services.
+    tomtom_service.start_background_sync(Config.TOMTOM_SYNC_INTERVAL)
 
     print("=" * 55)
     print("  OMNI SMARTCITY  Backend API & Central Live State")

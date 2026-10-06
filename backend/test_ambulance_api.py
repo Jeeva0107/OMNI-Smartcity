@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from app import create_app
 from services.state_manager import state_manager
+from services.socket_service import socketio
 
 
 class AmbulanceBackendApiTestCase(unittest.TestCase):
@@ -44,6 +45,20 @@ class AmbulanceBackendApiTestCase(unittest.TestCase):
         self.assertTrue(amb.get("active"))
         self.assertTrue(amb.get("emergencyActive"))
 
+        corridor = state_manager.get_emergency_corridor()
+        self.assertEqual(corridor.get("tripId"), "TRIP-999")
+        self.assertEqual(corridor.get("ambulanceId"), "AMB-999")
+        self.assertTrue(corridor.get("active"))
+        self.assertIn("location", corridor)
+        self.assertIn("destination", corridor)
+        self.assertIn("route", corridor)
+        self.assertIn("routeProgress", corridor)
+        self.assertIn("eta", corridor)
+        self.assertIn("currentJunction", corridor)
+        self.assertIn("nextJunction", corridor)
+        self.assertIn("signalChanges", corridor)
+        self.assertIn("lastUpdated", corridor)
+
         # Verify audit event logged
         events = state_manager.get_events()
         start_evt = next((e for e in events if e.get("category") == "AMBULANCE_TRIP_STARTED"), None)
@@ -71,6 +86,9 @@ class AmbulanceBackendApiTestCase(unittest.TestCase):
         self.assertEqual(amb.get("latitude"), 13.0150)
         self.assertEqual(amb.get("longitude"), 80.2120)
         self.assertEqual(amb.get("speed"), 65.5)
+        corridor = state_manager.get_emergency_corridor()
+        self.assertEqual(corridor.get("location"), {"latitude": 13.0150, "longitude": 80.2120})
+        self.assertEqual(corridor.get("eta"), "06:00")
 
     def test_03_change_ambulance_route(self):
         payload = {
@@ -89,6 +107,7 @@ class AmbulanceBackendApiTestCase(unittest.TestCase):
         amb = state_manager.get_ambulance()
         self.assertEqual(amb.get("routeId"), "ROUTE-B")
         self.assertEqual(amb.get("corridorStatus"), "BLOCKED")
+        self.assertEqual(state_manager.get_emergency_corridor().get("routeId"), "ROUTE-B")
 
         events = state_manager.get_events()
         reroute_evt = next((e for e in events if e.get("category") == "ALTERNATE_ROUTE_ASSIGNED"), None)
@@ -106,6 +125,7 @@ class AmbulanceBackendApiTestCase(unittest.TestCase):
         self.assertIsInstance(notifications, list)
 
     def test_05_end_ambulance_trip(self):
+        normal_signals = state_manager.get_ambulance().get("normalSignalStates", {})
         payload = {
             "ambulanceId": "AMB-999",
             "tripId": "TRIP-999"
@@ -118,6 +138,10 @@ class AmbulanceBackendApiTestCase(unittest.TestCase):
         amb = state_manager.get_ambulance()
         self.assertFalse(amb.get("active"))
         self.assertFalse(amb.get("emergencyActive"))
+        self.assertFalse(state_manager.get_emergency_corridor().get("active"))
+        for junction_id, normal_state in normal_signals.items():
+            if normal_state.get("signal") is not None:
+                self.assertEqual(state_manager.get_junction(junction_id).get("signal"), normal_state["signal"])
 
     def test_06_start_trip_complex_payload(self):
         """Tests start trip with complex/nested object payloads from React Native Expo app."""
@@ -151,7 +175,55 @@ class AmbulanceBackendApiTestCase(unittest.TestCase):
         self.assertEqual(amb.get("destination"), "Apollo Hospitals Greams Road")
         self.assertTrue(amb.get("active"))
 
+    def test_07_socketio_receives_complete_trip_lifecycle(self):
+        socket_client = socketio.test_client(self.app, flask_test_client=self.client)
+        try:
+            self.client.post("/api/ambulances/trips/start", json={
+                "ambulanceId": "AMB-SOCKET",
+                "tripId": "TRIP-SOCKET",
+                "hospital": "Test Hospital",
+                "routeId": "ROUTE-A"
+            })
+            snapshot = self.client.get("/api/state").get_json()
+            corridor = snapshot.get("emergencyCorridor", {})
+            self.assertEqual(corridor.get("tripId"), "TRIP-SOCKET")
+            self.assertTrue(corridor.get("active"))
+            self.client.post("/api/ambulances/location", json={
+                "ambulanceId": "AMB-SOCKET",
+                "tripId": "TRIP-SOCKET",
+                "latitude": 13.02,
+                "longitude": 80.21,
+                "routeProgress": 25,
+                "etaSeconds": 240
+            })
+            self.client.post("/api/ambulances/route-change", json={
+                "ambulanceId": "AMB-SOCKET",
+                "tripId": "TRIP-SOCKET",
+                "routeId": "ROUTE-B",
+                "reason": "ROAD_BLOCKED"
+            })
+            self.client.post("/api/ambulances/trips/end", json={
+                "ambulanceId": "AMB-SOCKET",
+                "tripId": "TRIP-SOCKET"
+            })
+
+            received_events = {event["name"] for event in socket_client.get_received()}
+            for event_name in (
+                "state:update",
+                "emergency_trip_started",
+                "ambulance:trip-started",
+                "ambulance_location_updated",
+                "emergency_route_updated",
+                "ambulance:route-changed",
+                "traffic_signal_changed",
+                "junction:signal-updated",
+                "emergency_trip_ended",
+                "ambulance:trip-ended",
+            ):
+                self.assertIn(event_name, received_events)
+        finally:
+            socket_client.disconnect()
+
 
 if __name__ == "__main__":
     unittest.main()
-
