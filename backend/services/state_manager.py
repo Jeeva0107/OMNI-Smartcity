@@ -12,6 +12,7 @@ import copy
 import time
 import json
 import threading
+import logging
 from typing import Dict, List, Any, Set
 
 from data.mock_data import (
@@ -22,6 +23,8 @@ from data.mock_data import (
     get_events,
     get_vehicle_classification,
 )
+
+logger = logging.getLogger(__name__)
 
 class StateManager:
     """Singleton Live State Manager holding central backend state."""
@@ -62,17 +65,7 @@ class StateManager:
                 "avgCitySpeedKmH": 42.5,
                 "lastCalculated": time.strftime("%H:%M:%S"),
             },
-            "emergency_corridor": {
-                "active": initial_ambulance.get("active", True),
-                "ambulanceId": initial_ambulance.get("id", "AMB-102"),
-                "corridorApproved": initial_ambulance.get("corridorApproved", True),
-                "origin": initial_ambulance.get("origin", "J1"),
-                "destination": initial_ambulance.get("destination", "J7"),
-                "routeJunctions": initial_ambulance.get("routeJunctions", ["J1", "J2", "J7"]),
-                "currentJunctionIndex": initial_ambulance.get("currentJunctionIndex", 0),
-                "junctionStatus": initial_ambulance.get("junctionStatus", {}),
-                "safetyValidation": initial_ambulance.get("safetyValidation", {}),
-            },
+            "emergency_corridor": self._corridor_state(initial_ambulance),
             "events": initial_events,
             "tomtom_status": {
                 "status": "INITIALIZING",
@@ -100,18 +93,26 @@ class StateManager:
         with self._ws_lock:
             clients = list(self._ws_clients)
 
-        if not clients:
-            return
-
         if payload is None:
             payload = self.get_state()
 
-        msg = json.dumps({
+        socket_payload = {
             "type": event_type,
             "timestamp": time.strftime("%H:%M:%S"),
             "data": payload,
-        })
+        }
 
+        from services.socket_service import socketio
+        if socketio.server is not None:
+            try:
+                socketio.emit("state:update", socket_payload)
+            except Exception:
+                logger.exception("[StateManager] Failed to broadcast Socket.IO state update")
+
+        if not clients:
+            return
+
+        msg = json.dumps(socket_payload)
         dead_clients = []
         for ws in clients:
             try:
@@ -217,23 +218,43 @@ class StateManager:
         with self._lock:
             return copy.deepcopy(self._state["emergency_corridor"])
 
+    @staticmethod
+    def _corridor_state(ambulance: Dict[str, Any]) -> Dict[str, Any]:
+        location = ambulance.get("currentLocation") or {
+            "latitude": ambulance.get("latitude"),
+            "longitude": ambulance.get("longitude"),
+        }
+        return {
+            "tripId": ambulance.get("tripId"),
+            "ambulanceId": ambulance.get("ambulanceId") or ambulance.get("id"),
+            "location": copy.deepcopy(location),
+            "destination": copy.deepcopy(ambulance.get("destinationLocation") or ambulance.get("destination")),
+            "route": copy.deepcopy(ambulance.get("route") or ambulance.get("activeRoute")),
+            "routeProgress": ambulance.get("routeProgress", 0),
+            "eta": ambulance.get("eta"),
+            "etaSeconds": ambulance.get("etaSeconds"),
+            "currentJunction": ambulance.get("currentJunctionId"),
+            "nextJunction": ambulance.get("nextJunctionId"),
+            "signalChanges": copy.deepcopy(ambulance.get("signalChanges", [])),
+            "active": bool(ambulance.get("active", False)),
+            "lastUpdated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "status": ambulance.get("tripStatus") or ambulance.get("status"),
+            "corridorApproved": ambulance.get("corridorApproved", False),
+            "origin": ambulance.get("origin"),
+            "routeId": ambulance.get("routeId"),
+            "routeJunctions": copy.deepcopy(ambulance.get("routeJunctions", [])),
+            "currentJunctionIndex": ambulance.get("currentJunctionIndex", 0),
+            "junctionStatus": copy.deepcopy(ambulance.get("junctionStatus", {})),
+            "safetyValidation": copy.deepcopy(ambulance.get("safetyValidation", {})),
+        }
+
     def update_ambulance_and_corridor(self, amb_updates: Dict[str, Any], notify: bool = True) -> Dict[str, Any]:
         with self._lock:
             self._state["ambulances"].update(amb_updates)
 
             # Sync emergency corridor view
             amb = self._state["ambulances"]
-            self._state["emergency_corridor"] = {
-                "active": amb.get("active", True),
-                "ambulanceId": amb.get("id", "AMB-102"),
-                "corridorApproved": amb.get("corridorApproved", True),
-                "origin": amb.get("origin", "J1"),
-                "destination": amb.get("destination", "J7"),
-                "routeJunctions": amb.get("routeJunctions", ["J1", "J2", "J7"]),
-                "currentJunctionIndex": amb.get("currentJunctionIndex", 0),
-                "junctionStatus": amb.get("junctionStatus", {}),
-                "safetyValidation": amb.get("safetyValidation", {}),
-            }
+            self._state["emergency_corridor"] = self._corridor_state(amb)
 
             # Sync ETA
             self._state["eta"]["activeCorridorEta"] = amb.get("eta", "06:45")

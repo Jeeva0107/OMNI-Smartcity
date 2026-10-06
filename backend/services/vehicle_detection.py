@@ -5,7 +5,7 @@ Responsibility: Run local Ultralytics YOLO11n inference & ByteTrack tracking
 on backend/data/traffic.mp4 using OpenCV.
 
 Features:
-- Pretrained yolo11n.pt loaded ONCE at module/service startup.
+- Pretrained yolo11n.pt loaded ONCE on first detection request.
 - OpenCV VideoCapture reads and continuously loops backend/data/traffic.mp4.
 - Tracks persistent vehicle IDs across frames.
 - Detects cars (2), motorcycles (3), buses (5), and trucks (7).
@@ -18,13 +18,15 @@ import os
 import time
 import logging
 import threading
-import cv2
 from typing import Dict, Any, List
-from ultralytics import YOLO
 from config import Config
 from data.mock_data import get_cameras, get_vehicle_classification, get_junction
 
 logger = logging.getLogger(__name__)
+
+cv2 = None
+YOLO = None
+HAS_YOLO = False
 
 # COCO vehicle class ID mapping
 VEHICLE_CLASSES = {
@@ -47,6 +49,8 @@ class LocalYOLOVehicleDetector:
             return cls._instance
 
     def _initialize(self):
+        global cv2, YOLO, HAS_YOLO
+
         self.lock = threading.Lock()
         self.model = None
         self.cap = None
@@ -56,6 +60,22 @@ class LocalYOLOVehicleDetector:
         self.status = "INITIALIZING"
         self.error_detail = None
         self.last_detection: Dict[str, Any] = {}
+
+        try:
+            import cv2 as cv2_module
+            from ultralytics import YOLO as yolo_class
+            cv2 = cv2_module
+            YOLO = yolo_class
+            HAS_YOLO = True
+        except ImportError:
+            cv2 = None
+            YOLO = None
+            HAS_YOLO = False
+
+        if not HAS_YOLO:
+            self.status = "SIMULATION"
+            self.error_detail = "YOLO/OpenCV not installed (Running in simulation mode)"
+            return
 
         logger.info(f"[LocalYOLO] Loading model {self.model_name}...")
         try:
@@ -70,6 +90,9 @@ class LocalYOLOVehicleDetector:
             self.error_detail = err_msg
 
     def _ensure_video_open(self) -> bool:
+        if not HAS_YOLO or cv2 is None:
+            return False
+
         if not os.path.exists(self.video_path):
             self.status = "ERROR"
             self.error_detail = f"Traffic video file not found at '{self.video_path}'"
@@ -342,8 +365,25 @@ class LocalYOLOVehicleDetector:
         }
 
 
-# Global singleton instance
-_yolo_detector = LocalYOLOVehicleDetector()
+_detector_instance = None
+_yolo_detector_lock = threading.Lock()
+
+
+def _get_yolo_detector() -> LocalYOLOVehicleDetector:
+    global _detector_instance
+    if _detector_instance is None:
+        with _yolo_detector_lock:
+            if _detector_instance is None:
+                _detector_instance = LocalYOLOVehicleDetector()
+    return _detector_instance
+
+
+class _LazyYOLODetector:
+    def __getattr__(self, name):
+        return getattr(_get_yolo_detector(), name)
+
+
+_yolo_detector = _LazyYOLODetector()
 
 
 def get_vehicle_counts_for_junction(junction_id: str) -> dict:
@@ -351,7 +391,7 @@ def get_vehicle_counts_for_junction(junction_id: str) -> dict:
     Returns real-time vehicle count & classification for a single junction.
     Shape matches frontend JunctionModal expectations.
     """
-    det = _yolo_detector.get_detection()
+    det = _get_yolo_detector().get_detection()
     
     # Clone and augment with junction-specific info
     res = dict(det)
@@ -376,7 +416,7 @@ def get_all_vehicle_classifications() -> dict:
     Updates central state_manager.
     """
     from services.state_manager import state_manager
-    det = _yolo_detector.get_detection()
+    det = _get_yolo_detector().get_detection()
     if det.get("status") == "ERROR":
         res = {
             "source": "real_yolo",
@@ -412,7 +452,7 @@ def get_all_vehicle_classifications() -> dict:
 def get_camera_status() -> list:
     """Returns health status and YOLO telemetry for all 12 camera feeds."""
     from services.state_manager import state_manager
-    det = _yolo_detector.get_detection()
+    det = _get_yolo_detector().get_detection()
     cameras = state_manager.get_cameras()
     
     for cam in cameras:
@@ -432,5 +472,4 @@ def get_camera_status() -> list:
 
 def get_video_stream():
     """Returns MJPEG frame generator from the global YOLO detector."""
-    return _yolo_detector.generate_video_stream()
-
+    return _get_yolo_detector().generate_video_stream()

@@ -211,7 +211,7 @@ export const CameraAnalyticsTab = () => {
                   !isYoloError ? (
                     <div className="relative w-full h-full">
                       <img
-                        src="http://localhost:5000/api/cameras/CAM-01/video_feed"
+                        src="https://omni-smartcity-backend.onrender.com/api/cameras/CAM-01/video_feed"
                         alt="CAM-01 YOLO11n Video Input"
                         className="w-full h-full object-cover"
                         onError={() => setVideoFeedError(true)}

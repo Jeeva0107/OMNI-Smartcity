@@ -11,14 +11,14 @@ export const SystemStatusTab = () => {
   // 1. Backend/API
   const backendStatus = backendOnline ? 'LIVE' : 'OFFLINE';
   const backendDetail = backendOnline
-    ? 'Flask API service active on http://localhost:5000'
+    ? 'Flask API service active on the deployed Render backend'
     : 'Backend service unreachable; control room operating on fallback state';
 
   // 2. WebSocket
   const wsState = wsConnected ? 'LIVE' : 'DEGRADED';
   const wsDetail = wsConnected
-    ? 'Real-time WebSocket event stream connected (/ws/live)'
-    : 'WebSocket disconnected; auto-reconnecting';
+    ? 'Real-time Socket.IO event stream connected'
+    : 'Socket.IO disconnected; auto-reconnecting (REST state fallback active)';
 
   // 3. TomTom Traffic API
   const tomtomState = tomtomStatus?.status === 'TOMTOM_LIVE'

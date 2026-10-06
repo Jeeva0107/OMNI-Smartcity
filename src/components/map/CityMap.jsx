@@ -205,7 +205,7 @@ export const JunctionModal = ({ junction, onClose }) => {
                 (junction.id === 'J1' || junction.cameraId === 'CAM-01' || junction.cameraRef === 'CAM-01') ? (
                   <div className="relative w-full h-full flex items-center justify-center bg-black">
                     <img
-                      src="http://localhost:5000/api/cameras/CAM-01/video_feed"
+                      src="https://omni-smartcity-backend.onrender.com/api/cameras/CAM-01/video_feed"
                       alt="Real YOLO CAM-01 Feed"
                       className="w-full h-full object-cover"
                     />

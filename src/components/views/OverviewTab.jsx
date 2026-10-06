@@ -49,7 +49,7 @@ const TomTomBanner = ({ tomtomStatus }) => {
 };
 
 export const OverviewTab = () => {
-  const { junctions, incidents, backendOnline, setActiveTab, tomtomStatus, setSelectedJunctionId } = useTraffic();
+  const { junctions, incidents, ambulance, backendOnline, setActiveTab, tomtomStatus, setSelectedJunctionId } = useTraffic();
 
   const isTomTomLive = tomtomStatus?.status === 'TOMTOM_LIVE';
 
@@ -82,7 +82,7 @@ export const OverviewTab = () => {
   };
 
   return (
-    <div className="flex-1 overflow-hidden flex flex-col bg-[#090B0D]">
+    <div className="light-dashboard flex-1 overflow-hidden flex flex-col bg-[#F5F4FA]">
 
       {/* OPERATOR WORKFLOW STAGES HEADER BANNER */}
       <div className="bg-[#0D1115] border-b border-[#1A2028] px-5 py-2.5 flex items-center justify-between">
@@ -124,8 +124,33 @@ export const OverviewTab = () => {
       <div className="flex-1 flex overflow-hidden p-4 gap-4">
 
         {/* LEFT: MAP (Primary situational awareness viewport) */}
-        <div className="flex-1 rounded-xl overflow-hidden border border-[#1A2028] bg-[#0C0F13] relative">
-          <GeoMap onSelectJunction={handleSelectMapJunction} showAmbulance={false} showJunctionMarkers={false} />
+        <div className="flex-1 rounded-xl overflow-hidden border border-[#1A2028] bg-white relative shadow-sm">
+          <GeoMap onSelectJunction={handleSelectMapJunction} showAmbulance={ambulance.active} showJunctionMarkers />
+          {ambulance.active && (
+            <div className="absolute top-3 right-3 z-[800] w-72 rounded-xl border border-violet-200 bg-violet-50/95 p-4 shadow-lg backdrop-blur">
+              <div className="flex items-center justify-between gap-2">
+                <span className="rounded-full bg-red-100 px-2.5 py-1 text-[10px] font-extrabold tracking-wide text-red-700">
+                  EMERGENCY CORRIDOR ACTIVE
+                </span>
+                <span className="font-data text-xs font-bold text-violet-900">{ambulance.id}</span>
+              </div>
+              <div className="mt-3 text-xs font-semibold text-slate-700">
+                Destination: {ambulance.destination || 'Hospital'}
+              </div>
+              <div className="mt-3 flex justify-between text-[10px] font-semibold text-slate-600">
+                <span>Route progress</span><span>{Math.round(ambulance.routeProgress || 0)}%</span>
+              </div>
+              <div className="mt-1 h-2 overflow-hidden rounded-full bg-violet-200">
+                <div className="h-full rounded-full bg-violet-600" style={{ width: `${Math.min(100, Math.max(0, Number(ambulance.routeProgress) || 0))}%` }} />
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-y-2 text-[10px] text-slate-600">
+                <span>ETA <strong className="text-slate-900">{ambulance.eta || '--:--'}</strong></span>
+                <span>Speed <strong className="text-slate-900">{ambulance.speed || 0} km/h</strong></span>
+                <span>Current <strong className="text-slate-900">{ambulance.currentJunctionId || '—'}</strong></span>
+                <span>Next <strong className="text-slate-900">{ambulance.nextJunctionId || '—'}</strong></span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* RIGHT: COMMAND CENTER CONTROL PANEL */}

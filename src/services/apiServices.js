@@ -4,10 +4,10 @@
  * All UI components talk to this file — NEVER directly to fetch().
  *
  * Strategy: Try the real Flask API first; if it is unreachable (dev / offline),
- * silently fall back to the local mock data so the UI always works.
+ * fall back to local mock data only for services with an explicit demo fallback.
  *
  * To force mock mode:  set USE_MOCK_DATA = true
- * To use the backend:  set USE_MOCK_DATA = false  (backend must be running on port 5000)
+ * Live service URL is shared with the deployed Flask-SocketIO backend.
  * ---------------------------------------------------------------------------
  */
 
@@ -21,8 +21,8 @@ import {
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const USE_MOCK_DATA = false;          // flip to true to disable all API calls
-const API_BASE_URL  = 'http://localhost:5000/api';
-const TIMEOUT_MS    = 3000;           // give backend 3 s before falling back
+const API_BASE_URL  = 'https://omni-smartcity-backend.onrender.com/api';
+const TIMEOUT_MS    = 20000;
 
 // ── Core fetch helper with timeout + mock fallback ────────────────────────────
 async function apiFetch(path, options = {}, mockFallback = null) {
@@ -151,6 +151,11 @@ export const routeService = {
 
 // ── Emergency Service ─────────────────────────────────────────────────────────
 export const emergencyService = {
+  /** Fetch the shared live state when the Socket.IO stream is unavailable */
+  async getLiveState() {
+    return apiFetch('/state');
+  },
+
   /** Current ambulance + corridor status */
   async getEmergencyStatus() {
     return apiFetch('/ambulance', {}, () => ({ ...INITIAL_AMBULANCE }));

@@ -11,13 +11,24 @@ const SIGNAL_COLOR = {
 };
 
 export const LiveTrafficTab = () => {
-  const { junctions, filterTraffic, setFilterTraffic } = useTraffic();
+  const { junctions, filterTraffic, setFilterTraffic, ambulance } = useTraffic();
   const [selectedJunction, setSelectedJunction] = useState(null);
 
   const filtered = filterTraffic === 'ALL' ? junctions : junctions.filter(j => j.status === filterTraffic);
 
   return (
-    <div className="flex-1 overflow-hidden flex flex-col">
+    <div className="light-dashboard flex-1 overflow-hidden flex flex-col bg-[#F5F4FA]">
+      <div className="flex items-center justify-between px-5 pb-2 pt-4">
+        <div>
+          <h1 className="text-lg font-extrabold text-slate-900">Live Traffic</h1>
+          <p className="mt-0.5 text-xs text-slate-500">Junction signals, congestion, incidents and active vehicle corridors</p>
+        </div>
+        {ambulance.active && (
+          <span className="rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] font-extrabold tracking-wide text-red-700">
+            EMERGENCY CORRIDOR ACTIVE · {ambulance.id}
+          </span>
+        )}
+      </div>
       {/* Filter bar */}
       <div className="px-5 py-3 border-b border-[#1A2028] flex items-center gap-3 shrink-0">
         <Filter className="w-3.5 h-3.5 text-[#5A636B]" />
@@ -45,7 +56,8 @@ export const LiveTrafficTab = () => {
         {/* Map */}
         <div className="flex-1 p-4 relative">
           <GeoMap
-            showJunctionMarkers={false}
+            showJunctionMarkers
+            showAmbulance={ambulance.active}
             onSelectJunction={(id) => {
               const j = junctions.find(item => item.id === id);
               if (j) setSelectedJunction(j);
@@ -82,7 +94,7 @@ export const LiveTrafficTab = () => {
                     <span className="text-xs font-semibold text-white truncate max-w-[120px]">{j.name}</span>
                   </div>
                   <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border font-data ${SIGNAL_COLOR[j.signal] || SIGNAL_COLOR.RED}`}>
-                    {j.signal}
+                    {j.currentPhase || j.signal} · {j.remainingTime ?? '—'}s
                   </span>
                 </div>
                 <div className="grid grid-cols-4 gap-1 text-center">

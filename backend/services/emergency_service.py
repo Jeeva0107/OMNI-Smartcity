@@ -459,43 +459,88 @@ def start_ambulance_trip(data: dict) -> dict:
             path = extracted_juncs
 
     j_statuses = {}
+    signal_changes = []
+    normal_signal_states = {}
     for i, jid in enumerate(path):
+        sig = "GREEN" if i <= 1 else "RED"
+        st = "PASSED" if i == 0 else ("READY" if i == 1 else "SCHEDULED")
         j_statuses[jid] = {
-            "status": "PASSED" if i == 0 else ("READY" if i == 1 else "SCHEDULED"),
-            "signal": "GREEN" if i <= 1 else "RED",
+            "status": st,
+            "signal": sig,
             "clearanceWindow": "0s (PASSED)" if i == 0 else f"{i*45}s",
             "queueCleared": i == 0,
         }
+        # Update junction signals in state for emergency green wave
+        try:
+            old_j = state_manager.get_junction(jid)
+            old_sig = old_j.get("signal", "RED") if old_j else "RED"
+            if old_j:
+                normal_signal_states[jid] = {
+                    key: old_j.get(key)
+                    for key in ("signal", "recommendedSignal", "controlMode", "remainingTime", "signalReason")
+                }
+            state_manager.update_junction(jid, {
+                "signal": sig,
+                "recommendedSignal": sig,
+                "controlMode": "EMERGENCY_OVERRIDE",
+                "remainingTime": 60 if sig == "GREEN" else (i * 45),
+                "signalReason": f"Green wave corridor priority for {ambulance_id}"
+            }, notify=True)
+            signal_changes.append({
+                "junctionId": jid,
+                "oldSignal": old_sig,
+                "oldRecommendedSignal": old_j.get("recommendedSignal", old_sig) if old_j else old_sig,
+                "newSignal": sig,
+                "status": "GREENLIT" if sig == "GREEN" else "HOLD",
+                "remainingTime": 60 if sig == "GREEN" else (i * 45),
+                "timestamp": time.strftime("%H:%M:%S")
+            })
+        except Exception as j_err:
+            logger.warning(f"[EmergencyService] Signal update failed for {jid}: {j_err}")
+
+    amb_name = str(data.get("ambulanceName") or data.get("name") or f"Ambulance {ambulance_id.replace('AMB-', '')}")
+    now_ts = time.strftime("%H:%M:%S")
+    hospital_data = hosp_input if isinstance(hosp_input, dict) else {}
+    dest_lat = float(hospital_data.get("lat") or hospital_data.get("latitude") or 13.0817)
+    dest_lng = float(hospital_data.get("lng") or hospital_data.get("longitude") or 80.2778)
 
     trip_record = {
         "active": True,
         "emergencyActive": True,
         "id": ambulance_id,
         "ambulanceId": ambulance_id,
+        "ambulanceName": amb_name,
         "tripId": trip_id,
-        "callsign": f"MEDIC-{ambulance_id.replace('AMB-', '')} (CHENNAI EMERGENCY RESPONDER)",
+        "callsign": f"MEDIC-{ambulance_id.replace('AMB-', '')} ({amb_name})",
         "status": "EMERGENCY ACTIVE",
         "tripStatus": "ACTIVE",
-        "corridorStatus": "PRIORITY ACTIVE",
+        "corridorStatus": "ACTIVE",
         "source": "LIVE BACKEND + SIMULATED GPS",
         "latitude": polyline[0]["latitude"],
         "longitude": polyline[0]["longitude"],
+        "currentLocation": {
+            "latitude": polyline[0]["latitude"],
+            "longitude": polyline[0]["longitude"]
+        },
+        "destination": hospital_name,
+        "destinationLocation": {
+            "latitude": dest_lat,
+            "longitude": dest_lng,
+            "name": hospital_name
+        },
         "speed": 60.0,
         "heading": 45.0,
         "origin": waypoints[0]["name"],
-        "destination": hospital_name,
-        "destinationName": hospital_name,
         "hospitalId": hospital_id,
         "routeId": norm_route_id,
         "originalRoute": route_input if isinstance(route_input, dict) else {"id": norm_route_id, "polyline": polyline},
         "activeRoute": route_input if isinstance(route_input, dict) else {"id": norm_route_id, "polyline": polyline},
-        "route": {
-            "id": norm_route_id,
-            "polyline": polyline,
-            "etaSeconds": eta_info["etaSeconds"],
-            "distanceKm": eta_info["distRemainingKm"],
-            "junctions": path,
-        },
+        "route": polyline,
+        "routeProgress": 0,
+        "currentJunctionId": path[0] if path else "J1",
+        "nextJunctionId": path[1] if len(path) > 1 else (path[0] if path else "J1"),
+        "signalChanges": signal_changes,
+        "normalSignalStates": normal_signal_states,
         "eta": eta_info["eta"],
         "etaSeconds": eta_info["etaSeconds"],
         "distRemaining": eta_info["distRemainingKm"],
@@ -505,54 +550,95 @@ def start_ambulance_trip(data: dict) -> dict:
         "routeJunctions": path,
         "junctionStatus": j_statuses,
         "upcomingJunctions": eta_info["upcomingJunctions"],
-        "startTime": str(data.get("startTime") or time.strftime("%H:%M:%S")),
-        "timestamps": {"started": time.strftime("%H:%M:%S")},
+        "startTime": str(data.get("startTime") or now_ts),
+        "startedAt": now_ts,
+        "updatedAt": now_ts,
+        "timestamps": {"started": now_ts},
     }
 
     # ─── CRITICAL: Update StateManager (single source of truth) ───────────────
     updated = state_manager.update_ambulance_and_corridor(trip_record, notify=True)
-    
-    logger.info(f"[STATE] Ambulance trip started: {ambulance_id}, tripId={trip_id}, route={norm_route_id}, eta={eta_info['eta']}")
+    logger.info(
+        "[EmergencyService] Trip started: ambulanceId=%s tripId=%s route=%s eta=%s",
+        ambulance_id, trip_id, norm_route_id, eta_info["eta"]
+    )
 
     state_manager.push_event(
         category="AMBULANCE_TRIP_STARTED",
         location=path[0],
-        title=f"AMBULANCE TRIP STARTED: {ambulance_id}",
-        description=f"Active trip {trip_id} started heading to {hospital_name} via {norm_route_id}.",
+        title=f"EMERGENCY CORRIDOR ACTIVE: {ambulance_id}",
+        description=f"Active trip {trip_id} started heading to {hospital_name} via {norm_route_id}. Green-wave activated.",
         severity="CRITICAL",
         status="ACTIVE"
     )
 
     try:
-        from services.socket_service import emit_corridor_status_updated, socketio
+        from services.socket_service import (
+            emit_emergency_trip_started,
+            emit_corridor_status_updated,
+            emit_junction_signal_updated,
+            socketio
+        )
+        # Broadcast trip started
+        trip_payload = {
+            "type": "AMBULANCE_TRIP_STARTED",
+            "ambulanceId": ambulance_id,
+            "ambulanceName": amb_name,
+            "tripId": trip_id,
+            "active": True,
+            "status": "ACTIVE",
+            "routeId": norm_route_id,
+            "hospital": hospital_name,
+            "destinationName": hospital_name,
+            "destination": trip_record["destination"],
+            "destinationLocation": trip_record["destinationLocation"],
+            "location": trip_record["currentLocation"],
+            "etaSeconds": eta_info["etaSeconds"],
+            "eta": eta_info["eta"],
+            "currentLocation": trip_record["currentLocation"],
+            "currentJunctionIndex": trip_record["currentJunctionIndex"],
+            "route": polyline,
+            "routeJunctions": path,
+            "routeProgress": 0,
+            "currentJunctionId": trip_record["currentJunctionId"],
+            "nextJunctionId": trip_record["nextJunctionId"],
+            "speed": trip_record["speed"],
+            "distRemaining": trip_record["distRemaining"],
+            "lastUpdated": trip_record["updatedAt"],
+            "signalChanges": signal_changes,
+            "timestamp": now_ts
+        }
+        emit_emergency_trip_started(trip_id, trip_payload, ambulance_id=ambulance_id)
+
+        # Broadcast corridor status
         emit_corridor_status_updated(trip_id, {
             "type": "CORRIDOR_STATUS_UPDATED",
             "ambulanceId": ambulance_id,
             "tripId": trip_id,
-            "status": "PRIORITY ACTIVE",
+            "status": "ACTIVE",
             "message": f"Emergency corridor activated for {ambulance_id}",
-            "timestamp": time.strftime("%H:%M:%S")
+            "signalChanges": signal_changes,
+            "timestamp": now_ts
         }, ambulance_id=ambulance_id)
 
-        socketio.emit("ambulance:trip-started", {
-            "type": "AMBULANCE_TRIP_STARTED",
-            "ambulanceId": ambulance_id,
-            "tripId": trip_id,
-            "routeId": norm_route_id,
-            "hospital": hospital_name,
-            "etaSeconds": eta_info["etaSeconds"],
-            "timestamp": time.strftime("%H:%M:%S")
-        }, to=f"ambulance-trip-{trip_id}")
-
-        socketio.emit("ambulance:trip-started", {
-            "type": "AMBULANCE_TRIP_STARTED",
-            "ambulanceId": ambulance_id,
-            "tripId": trip_id,
-            "routeId": norm_route_id,
-            "hospital": hospital_name,
-            "etaSeconds": eta_info["etaSeconds"],
-            "timestamp": time.strftime("%H:%M:%S")
-        })
+        # Broadcast signal changes for all corridor junctions
+        for sc in signal_changes:
+            emit_junction_signal_updated(trip_id, {
+                "type": "TRAFFIC_SIGNAL_CHANGED",
+                "junctionId": sc["junctionId"],
+                "signalState": sc["newSignal"],
+                "status": sc["status"],
+                "remainingTime": sc["remainingTime"],
+                "currentPhase": sc["newSignal"],
+                "signalChanges": signal_changes,
+                "tripId": trip_id,
+                "ambulanceId": ambulance_id,
+                "timestamp": now_ts
+            }, ambulance_id=ambulance_id)
+            logger.info(
+                "[EmergencyService] Signal changed: junctionId=%s signal=%s tripId=%s",
+                sc["junctionId"], sc["newSignal"], trip_id
+            )
     except Exception as sock_err:
         logger.warning(f"[EmergencyService] Socket.IO emission warning: {sock_err}")
 
@@ -572,6 +658,7 @@ def update_ambulance_location(data: dict) -> dict:
     Handles POST /api/ambulances/location from Ambulance Expo App.
     Updates StateManager and broadcasts to /ws/live.
     """
+    data = data if isinstance(data, dict) else {}
     amb = state_manager.get_ambulance()
     ambulance_id = data.get("ambulanceId") or amb.get("id", "AMB-102")
     trip_id = data.get("tripId") or amb.get("tripId", "TRIP-102")
@@ -588,46 +675,83 @@ def update_ambulance_location(data: dict) -> dict:
     secs = eta_sec % 60
     eta_formatted = f"{mins:02d}:{secs:02d}"
 
+    waypoints = amb.get("route") or CHENNAI_WAYPOINTS.get(amb.get("routeId", "ROUTE-A"), [])
+    total_wps = len(waypoints) if isinstance(waypoints, list) else 10
+    calc_progress = round(min(100.0, max(0.0, (wp_idx / max(1, total_wps - 1)) * 100)), 1)
+    route_progress = float(data.get("routeProgress", calc_progress))
+    current_junction = data.get("currentJunctionId") or amb.get("currentJunctionId")
+    next_junction = data.get("nextJunctionId") or amb.get("nextJunctionId")
+    route_junctions = amb.get("routeJunctions") or []
+    current_junction_index = (
+        route_junctions.index(current_junction)
+        if current_junction in route_junctions
+        else amb.get("currentJunctionIndex", 0)
+    )
+
     updates = {
         "latitude": lat,
         "longitude": lng,
+        "currentLocation": {
+            "latitude": lat,
+            "longitude": lng
+        },
         "speed": speed,
         "heading": heading,
         "waypointIndex": wp_idx,
+        "routeProgress": route_progress,
+        "currentJunctionId": current_junction,
+        "nextJunctionId": next_junction,
+        "currentJunctionIndex": current_junction_index,
         "etaSeconds": eta_sec,
         "eta": eta_formatted,
+        "updatedAt": time.strftime("%H:%M:%S"),
         "source": "LIVE BACKEND + LIVE GPS" if Config.USE_REAL_GPS else "LIVE BACKEND + SIMULATED GPS"
     }
-
-    if next_j:
-        updates["nextJunctionId"] = next_j
 
     # ─── CRITICAL: Update StateManager (single source of truth) ───────────────
     updated = state_manager.update_ambulance_and_corridor(updates, notify=True)
     
-    logger.info(f"[STATE] Ambulance location updated: {ambulance_id}, lat={lat:.4f}, lng={lng:.4f}, eta={eta_formatted}")
+    logger.info(
+        "[EmergencyService] Location updated: ambulanceId=%s tripId=%s lat=%.5f lng=%.5f eta=%s progress=%.1f%%",
+        ambulance_id, trip_id, lat, lng, eta_formatted, route_progress
+    )
 
     state_manager.push_event(
         category="AMBULANCE_LOCATION_UPDATED",
         location=next_j or "CORRIDOR",
         title=f"LOCATION UPDATE: {ambulance_id}",
-        description=f"GPS updated: [{lat:.4f}, {lng:.4f}], Speed: {speed:.1f}km/h, ETA: {eta_formatted}.",
+        description=f"GPS updated: [{lat:.4f}, {lng:.4f}], Speed: {speed:.1f}km/h, ETA: {eta_formatted}, Progress: {route_progress}%.",
         severity="INFO",
         status="ACTIVE"
     )
 
-    from services.socket_service import emit_corridor_status_updated
-    emit_corridor_status_updated(trip_id, {
+    from services.socket_service import emit_corridor_status_updated, emit_ambulance_location_updated
+    loc_payload = {
         "type": "LOCATION_UPDATED",
         "ambulanceId": ambulance_id,
         "tripId": trip_id,
         "latitude": lat,
         "longitude": lng,
+        "currentLocation": {"latitude": lat, "longitude": lng},
+        "location": {"latitude": lat, "longitude": lng},
         "speed": speed,
+        "heading": heading,
+        "routeProgress": route_progress,
         "etaSeconds": eta_sec,
-        "nextJunctionId": next_j,
+        "eta": eta_formatted,
+        "nextJunctionId": next_junction,
+        "currentJunctionId": current_junction,
+        "currentJunctionIndex": current_junction_index,
+        "route": updated.get("route"),
+        "destination": updated.get("destination"),
+        "destinationLocation": updated.get("destinationLocation"),
+        "active": updated.get("active", True),
+        "signalChanges": updated.get("signalChanges", []),
+        "lastUpdated": updated.get("updatedAt"),
         "timestamp": time.strftime("%H:%M:%S")
-    }, ambulance_id=ambulance_id)
+    }
+    emit_ambulance_location_updated(trip_id, loc_payload, ambulance_id=ambulance_id)
+    emit_corridor_status_updated(trip_id, loc_payload, ambulance_id=ambulance_id)
 
     return {"success": True, "ambulance": updated}
 
@@ -637,16 +761,90 @@ def change_ambulance_route(data: dict) -> dict:
     Handles POST /api/ambulances/route-change from Ambulance Expo App.
     Updates StateManager and broadcasts to /ws/live.
     """
+    data = data if isinstance(data, dict) else {}
     amb = state_manager.get_ambulance()
     ambulance_id = data.get("ambulanceId") or amb.get("id", "AMB-102")
     trip_id = data.get("tripId") or amb.get("tripId", "TRIP-102")
-    new_route_id = data.get("routeId", "ROUTE-B")
+    new_route_id = str(data.get("routeId", "ROUTE-B")).upper()
     new_route = data.get("newRoute") or {}
     reason = data.get("reason", "ROAD_BLOCKED")
-    new_eta = data.get("newEtaSeconds", 450)
+    new_eta = int(data.get("newEtaSeconds", 450))
 
     waypoints = CHENNAI_WAYPOINTS.get(new_route_id, CHENNAI_WAYPOINTS["ROUTE-B"])
     path = ["J1", "J10", "J11", "J3", "J7"] if new_route_id == "ROUTE-B" else ["J1", "J8", "J2", "J7"]
+    route = (
+        new_route.get("polyline") or new_route.get("coordinates") or new_route.get("path")
+        if isinstance(new_route, dict)
+        else new_route
+    )
+    if not isinstance(route, list) or not route:
+        route = [
+            {"latitude": point["lat"], "longitude": point["lng"], "lat": point["lat"], "lng": point["lng"]}
+            for point in waypoints
+        ]
+
+    normal_signal_states = dict(amb.get("normalSignalStates") or {})
+    previous_path = amb.get("routeJunctions") or []
+    from services.socket_service import emit_junction_signal_updated
+    for junction_id in previous_path:
+        if junction_id in path:
+            continue
+        normal = normal_signal_states.get(junction_id)
+        if not normal:
+            continue
+        state_manager.update_junction(junction_id, normal, notify=True)
+        emit_junction_signal_updated(trip_id, {
+            "type": "TRAFFIC_SIGNAL_CHANGED",
+            "junctionId": junction_id,
+            "signalState": normal.get("signal", "RED"),
+            "currentPhase": normal.get("signal", "RED"),
+            "status": "NORMAL_RESTORED",
+            "remainingTime": normal.get("remainingTime", 35),
+            "tripId": trip_id,
+            "ambulanceId": ambulance_id,
+            "timestamp": time.strftime("%H:%M:%S")
+        }, ambulance_id=ambulance_id)
+
+    signal_changes = []
+    for index, junction_id in enumerate(path):
+        junction = state_manager.get_junction(junction_id)
+        if junction and junction_id not in normal_signal_states:
+            normal_signal_states[junction_id] = {
+                key: junction.get(key)
+                for key in ("signal", "recommendedSignal", "controlMode", "remainingTime", "signalReason")
+            }
+        signal_state = "GREEN" if index <= 1 else "RED"
+        state_manager.update_junction(junction_id, {
+            "signal": signal_state,
+            "recommendedSignal": signal_state,
+            "controlMode": "EMERGENCY_OVERRIDE",
+            "remainingTime": 60 if signal_state == "GREEN" else index * 45,
+            "signalReason": f"Green wave corridor priority for {ambulance_id}",
+        }, notify=True)
+        signal_changes.append({
+            "junctionId": junction_id,
+            "oldSignal": junction.get("signal", "RED") if junction else "RED",
+            "newSignal": signal_state,
+            "status": "GREENLIT" if signal_state == "GREEN" else "HOLD",
+            "remainingTime": 60 if signal_state == "GREEN" else index * 45,
+            "timestamp": time.strftime("%H:%M:%S"),
+        })
+        emit_junction_signal_updated(trip_id, {
+            "type": "TRAFFIC_SIGNAL_CHANGED",
+            "junctionId": junction_id,
+            "signalState": signal_state,
+            "currentPhase": signal_state,
+            "status": signal_changes[-1]["status"],
+            "remainingTime": signal_changes[-1]["remainingTime"],
+            "signalChanges": signal_changes,
+            "tripId": trip_id,
+            "ambulanceId": ambulance_id,
+            "timestamp": time.strftime("%H:%M:%S")
+        }, ambulance_id=ambulance_id)
+        logger.info(
+            "[EmergencyService] Signal changed: junctionId=%s signal=%s tripId=%s",
+            junction_id, signal_state, trip_id
+        )
 
     updates = {
         "routeId": new_route_id,
@@ -655,13 +853,19 @@ def change_ambulance_route(data: dict) -> dict:
         "previousRouteId": amb.get("routeId", "ROUTE-A"),
         "routeJunctions": path,
         "activeRoute": new_route,
+        "route": route,
+        "normalSignalStates": normal_signal_states,
+        "signalChanges": signal_changes,
         "etaSeconds": new_eta,
         "eta": f"{new_eta // 60:02d}:{new_eta % 60:02d}",
+        "updatedAt": time.strftime("%H:%M:%S"),
     }
 
     updated = state_manager.update_ambulance_and_corridor(updates, notify=True)
-    
-    logger.info(f"[STATE] Ambulance route changed: {ambulance_id}, new route={new_route_id}, reason={reason}")
+    logger.info(
+        "[EmergencyService] Route changed: ambulanceId=%s tripId=%s route=%s reason=%s",
+        ambulance_id, trip_id, new_route_id, reason
+    )
 
     state_manager.push_event(
         category="ROAD_BLOCKED",
@@ -689,6 +893,14 @@ def change_ambulance_route(data: dict) -> dict:
         "reason": reason,
         "newRouteId": new_route_id,
         "newRoute": new_route,
+        "route": route,
+        "routeProgress": updated.get("routeProgress", 0),
+        "eta": updated.get("eta"),
+        "destination": updated.get("destination"),
+        "destinationLocation": updated.get("destinationLocation"),
+        "currentJunctionId": updated.get("currentJunctionId"),
+        "nextJunctionId": updated.get("nextJunctionId"),
+        "signalChanges": signal_changes,
         "newEtaSeconds": new_eta,
         "junctions": path,
         "message": f"Route rerouted via {new_route_id} due to {reason}",
@@ -709,38 +921,76 @@ def end_ambulance_trip(ambulance_id: str = "AMB-102", trip_id: str = "TRIP-102")
     ambulance_id = ambulance_id or amb.get("id", "AMB-102")
     trip_id = trip_id or amb.get("tripId", "TRIP-102")
 
+    now_ts = time.strftime("%H:%M:%S")
     updates = {
         "active": False,
         "emergencyActive": False,
         "status": "COMPLETED",
         "tripStatus": "COMPLETED",
-        "corridorStatus": "PASSED",
+        "corridorStatus": "COMPLETED",
         "eta": "COMPLETED",
         "etaSeconds": 0,
         "distRemaining": 0.0,
+        "routeProgress": 100.0,
+        "speed": 0.0,
+        "updatedAt": now_ts,
     }
 
+    # Restore the pre-trip signal configuration for every junction touched.
+    corridor_path = amb.get("routeJunctions") or ["J1", "J8", "J2", "J7"]
+    from services.socket_service import emit_ambulance_trip_ended, emit_junction_signal_updated
+    normal_signal_states = amb.get("normalSignalStates") or {}
+    for jid in corridor_path:
+        try:
+            normal_state = normal_signal_states.get(jid) or {
+                "controlMode": "AI_CONTROL",
+                "signal": "RED" if jid != "J1" else "GREEN",
+                "recommendedSignal": "GREEN",
+                "remainingTime": 35,
+                "signalReason": "AI Adaptive Control active. Resumed normal traffic optimization after emergency corridor."
+            }
+            state_manager.update_junction(jid, normal_state, notify=True)
+            emit_junction_signal_updated(trip_id, {
+                "type": "TRAFFIC_SIGNAL_CHANGED",
+                "junctionId": jid,
+                "signalState": normal_state.get("signal", "RED"),
+                "currentPhase": normal_state.get("signal", "RED"),
+                "status": "NORMAL_RESTORED",
+                "remainingTime": normal_state.get("remainingTime", 35),
+                "tripId": trip_id,
+                "ambulanceId": ambulance_id,
+                "timestamp": now_ts
+            }, ambulance_id=ambulance_id)
+            logger.info(
+                "[EmergencyService] Signal restored: junctionId=%s signal=%s tripId=%s",
+                jid, normal_state.get("signal", "RED"), trip_id
+            )
+        except Exception as r_err:
+            logger.warning(f"[EmergencyService] Signal restoration failed for {jid}: {r_err}")
+
+    now_timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     updated = state_manager.update_ambulance_and_corridor(updates, notify=True)
-    
-    logger.info(f"[STATE] Ambulance trip ended: {ambulance_id}, tripId={trip_id}")
+    logger.info("[EmergencyService] Trip ended: ambulanceId=%s tripId=%s", ambulance_id, trip_id)
 
     state_manager.push_event(
         category="AMBULANCE_TRIP_ENDED",
         location=amb.get("destination", "J7"),
         title=f"AMBULANCE TRIP ENDED: {ambulance_id}",
-        description=f"Trip {trip_id} completed successfully. Signals restoring to AI adaptive state.",
+        description=f"Trip {trip_id} completed successfully. Normal signal states restored.",
         severity="SUCCESS",
         status="COMPLETED"
     )
 
-    from services.socket_service import emit_ambulance_trip_ended
     emit_ambulance_trip_ended(trip_id, {
         "type": "TRIP_ENDED",
         "ambulanceId": ambulance_id,
         "tripId": trip_id,
         "status": "COMPLETED",
-        "message": f"Trip {trip_id} completed.",
-        "timestamp": time.strftime("%H:%M:%S")
+        "routeProgress": 100,
+        "active": False,
+        "lastUpdated": now_timestamp,
+        "message": f"Trip {trip_id} completed successfully.",
+        "timestamp": now_ts
     }, ambulance_id=ambulance_id)
 
     return {"success": True, "status": "TRIP_ENDED", "ambulance": updated}
